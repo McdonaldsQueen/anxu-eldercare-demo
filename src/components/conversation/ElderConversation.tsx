@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
+import { useOpenhexChat } from '@openhex-ai/agent-sdk/react'
 import { Link } from 'react-router-dom'
 import {
   createBrowserSpeechRecognition,
@@ -6,24 +7,20 @@ import {
   voiceErrorMessage,
   type SpeechRecognitionLike,
 } from '../../services/speechRecognition'
-import { sendOpenhexMessage } from '../../services/openhexChat'
-import type { ConversationMessage } from '../../domain/models'
+import { getOpenhexToken } from '../../services/openhexToken'
 import { useDemoStore } from '../../store/demoStore'
 import { ArrowIcon, MicIcon, SparkIcon } from '../ui/Icons'
 import { RiskFollowUpPanel } from './RiskFollowUpPanel'
 
 type VoiceState = 'IDLE' | 'REQUESTING' | 'LISTENING' | 'ERROR'
-type ExperienceMode = 'MOCK' | 'OPENHEX'
-
-const OPENHEX_FAILURE_MESSAGE = 'OpenHex 暂时无法回复。您可以重试，或切回 Mock Demo；原有 Demo 未受影响。'
+type ExperienceMode = 'PHASE4' | 'OPENHEX'
 
 export function ElderConversation() {
   const [input, setInput] = useState('')
-  const [experienceMode, setExperienceMode] = useState<ExperienceMode>('MOCK')
-  const [openhexMessages, setOpenhexMessages] = useState<ConversationMessage[]>([])
-  const [openhexConversationId, setOpenhexConversationId] = useState<string | null>(null)
-  const [openhexError, setOpenhexError] = useState('')
-  const [isOpenhexSending, setIsOpenhexSending] = useState(false)
+  const [experienceMode, setExperienceMode] = useState<ExperienceMode>(
+    import.meta.env.VITE_OPENHEX_AGENT_ID?.trim() ? 'OPENHEX' : 'PHASE4',
+  )
+  const [sendError, setSendError] = useState('')
   const [voiceState, setVoiceState] = useState<VoiceState>('IDLE')
   const [voiceMessage, setVoiceMessage] = useState('')
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
@@ -35,51 +32,36 @@ export function ElderConversation() {
       (careCase) => ['SERVICE', 'MOBILITY'].includes(careCase.caseType) && careCase.status !== 'COMPLETED',
     ),
   )
+  const agentId = import.meta.env.VITE_OPENHEX_AGENT_ID?.trim()
+  const baseUrl = import.meta.env.VITE_OPENHEX_API_BASE_URL?.trim() || 'https://api.openhex.tech'
+  const chat = useOpenhexChat({
+    agentId: agentId || undefined,
+    baseUrl,
+    getToken: getOpenhexToken,
+    persist: 'anxu-eldercare-agent-chat',
+    senderName: '王阿姨',
+  })
 
   useEffect(() => () => recognitionRef.current?.stop(), [])
 
   const send = async () => {
     const text = input.trim()
-    if (!text || (experienceMode === 'OPENHEX' && isOpenhexSending)) return
+    if (!text) return
 
-    if (experienceMode === 'MOCK') {
+    if (experienceMode === 'PHASE4') {
       submitElderMessage(text)
       setInput('')
       return
     }
 
-    const sentAt = new Date().toISOString()
-    const userMessage: ConversationMessage = {
-      id: `openhex-user-${crypto.randomUUID()}`,
-      sender: 'USER',
-      text,
-      sentAt,
-    }
-    setOpenhexMessages((messages) => [...messages, userMessage])
-    setInput('')
-    setOpenhexError('')
-    setIsOpenhexSending(true)
+    if (chat.isResponding || !agentId) return
 
+    setSendError('')
     try {
-      const result = await sendOpenhexMessage({
-        message: text,
-        ...(openhexConversationId ? { conversationId: openhexConversationId } : {}),
-      })
-      setOpenhexConversationId(result.conversationId)
-      setOpenhexMessages((messages) => [
-        ...messages,
-        {
-          id: `openhex-assistant-${crypto.randomUUID()}`,
-          sender: 'ASSISTANT',
-          text: result.reply,
-          sentAt: new Date().toISOString(),
-        },
-      ])
-    } catch {
-      setOpenhexError(OPENHEX_FAILURE_MESSAGE)
-      setInput((current) => current || text)
-    } finally {
-      setIsOpenhexSending(false)
+      await chat.send(text)
+      setInput('')
+    } catch (error) {
+      setSendError(error instanceof Error ? error.message : '发送失败，请稍后重试。')
     }
   }
 
@@ -148,15 +130,6 @@ export function ElderConversation() {
     }
   }
 
-  const visibleMessages = experienceMode === 'OPENHEX' ? openhexMessages : session.messages
-
-  const startNewOpenhexConversation = () => {
-    setOpenhexMessages([])
-    setOpenhexConversationId(null)
-    setOpenhexError('')
-    setInput('')
-  }
-
   return (
     <>
       <button
@@ -172,22 +145,22 @@ export function ElderConversation() {
 
       <div className={`elder-conversation elder-conversation--${experienceMode.toLowerCase()}`}>
         <div className="experience-mode" aria-label="对话体验模式" role="group">
-          <span>体验模式</span>
-          <button
-            className={experienceMode === 'MOCK' ? 'is-active' : ''}
-            type="button"
-            aria-pressed={experienceMode === 'MOCK'}
-            onClick={() => setExperienceMode('MOCK')}
-          >
-            Mock Demo
-          </button>
+          <span>对话模式</span>
           <button
             className={experienceMode === 'OPENHEX' ? 'is-active' : ''}
             type="button"
             aria-pressed={experienceMode === 'OPENHEX'}
             onClick={() => setExperienceMode('OPENHEX')}
           >
-            OpenHex 体验
+            OpenHex Agent
+          </button>
+          <button
+            className={experienceMode === 'PHASE4' ? 'is-active' : ''}
+            type="button"
+            aria-pressed={experienceMode === 'PHASE4'}
+            onClick={() => setExperienceMode('PHASE4')}
+          >
+            Phase 4 业务体验
           </button>
         </div>
 
@@ -197,30 +170,41 @@ export function ElderConversation() {
           </p>
         )}
 
-        {experienceMode === 'OPENHEX' && (
+        {experienceMode === 'OPENHEX' && chat.conversationId && (
           <div className="openhex-session-status" role="status">
-            <span>仅验证 Agent 对话，不会创建或更新业务 Case</span>
-            {openhexConversationId && (
-              <>
-                <code>conversationId: {openhexConversationId}</code>
-                <button type="button" disabled={isOpenhexSending} onClick={startNewOpenhexConversation}>新建体验会话</button>
-              </>
-            )}
+            <code>conversationId: {chat.conversationId}</code>
+            <button type="button" disabled={chat.isResponding} onClick={chat.clear}>新建会话</button>
           </div>
         )}
 
-        {visibleMessages.length > 0 && (
+        {experienceMode === 'OPENHEX' && chat.messages.length > 0 && (
           <div className="conversation-thread" aria-live="polite" aria-label="与安序智护的对话">
-            {visibleMessages.map((message) => (
+            {chat.messages
+              .filter((message) => message.role !== 'system')
+              .map((message) => (
+              <div className={`message-row message-row--${message.role}`} key={message.id}>
+                {message.role === 'assistant' && <span className="message-avatar"><SparkIcon /></span>}
+                <div className="message-content">
+                  <span>{message.role === 'user' ? '王阿姨' : message.agent?.name || '安序智护'}</span>
+                  <p>{message.text || (message.pending ? '正在思考…' : '')}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {experienceMode === 'PHASE4' && session.messages.length > 0 && (
+          <div className="conversation-thread" aria-live="polite" aria-label="与安序智护的对话">
+            {session.messages.map((message) => (
               <div className={`message-row message-row--${message.sender.toLowerCase()}`} key={message.id}>
                 {message.sender === 'ASSISTANT' && <span className="message-avatar"><SparkIcon /></span>}
                 <div className="message-content">
-                  <span>{message.sender === 'USER' ? '王阿姨' : experienceMode === 'OPENHEX' ? 'OpenHex Agent' : '安序智护'}</span>
+                  <span>{message.sender === 'USER' ? '王阿姨' : '安序智护'}</span>
                   <p>{message.text}</p>
                 </div>
               </div>
             ))}
-            {experienceMode === 'MOCK' && activeServiceCase && session.activeCaseId === activeServiceCase.caseId && (
+            {activeServiceCase && session.activeCaseId === activeServiceCase.caseId && (
               <div className="conversation-created-case" role="status">
                 <div>
                   <span>已生成一件正在处理的事情</span>
@@ -234,14 +218,35 @@ export function ElderConversation() {
           </div>
         )}
 
-        {experienceMode === 'MOCK' && <RiskFollowUpPanel />}
+        {experienceMode === 'OPENHEX' && chat.isResponding && (
+          <div className="agent-status" role="status">
+            <span>安序智护正在回复…</span>
+            <button type="button" onClick={chat.interrupt}>停止回复</button>
+          </div>
+        )}
 
-        {experienceMode === 'OPENHEX' && isOpenhexSending && (
-          <p className="openhex-feedback" role="status">OpenHex Agent 正在回复，首轮冷启动可能需要十几秒…</p>
+        {experienceMode === 'OPENHEX' && !agentId && (
+          <p className="agent-error" role="alert">
+            尚未配置 OpenHex Agent，请设置 VITE_OPENHEX_AGENT_ID。
+          </p>
         )}
-        {experienceMode === 'OPENHEX' && openhexError && (
-          <p className="openhex-feedback openhex-feedback--error" role="alert">{openhexError}</p>
+
+        {experienceMode === 'OPENHEX' && (sendError || chat.error) && (
+          <div className="agent-error" role="alert">
+            <span>{sendError || chat.error?.message || '发送失败，请稍后重试。'}</span>
+            <button
+              type="button"
+              onClick={() => {
+                setSendError('')
+                chat.retry()
+              }}
+            >
+              重试
+            </button>
+          </div>
         )}
+
+        <RiskFollowUpPanel />
 
         <form className="text-entry" aria-label="文字需求输入" onSubmit={handleSubmit}>
           <SparkIcon />
@@ -251,11 +256,17 @@ export function ElderConversation() {
             value={input}
             onChange={(event) => setInput(event.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={experienceMode === 'OPENHEX' ? '和 OpenHex Agent 聊聊，试试多轮上下文' : '例如：我明天下午要去医院，但是没人陪我'}
+            placeholder={experienceMode === 'OPENHEX'
+              ? '和 OpenHex Agent 聊聊，支持多轮上下文'
+              : '例如：我明天下午要去医院，但是没人陪我'}
             autoComplete="off"
+            disabled={experienceMode === 'OPENHEX' && (chat.isResponding || !agentId)}
           />
-          <button type="submit" disabled={!input.trim() || (experienceMode === 'OPENHEX' && isOpenhexSending)}>
-            {experienceMode === 'OPENHEX' && isOpenhexSending ? '等待中…' : '发送'}
+          <button
+            type="submit"
+            disabled={!input.trim() || (experienceMode === 'OPENHEX' && (chat.isResponding || !agentId))}
+          >
+            {experienceMode === 'OPENHEX' && chat.isResponding ? '回复中' : '发送'}
           </button>
         </form>
       </div>

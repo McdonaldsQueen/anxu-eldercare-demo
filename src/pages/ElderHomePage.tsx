@@ -11,6 +11,11 @@ export function ElderHomePage() {
   const completedCases = useDemoStore(useShallow(selectCompletedCases))
   const submitElderMessage = useDemoStore((state) => state.submitElderMessage)
 
+  const createEscortDemo = () => {
+    submitElderMessage('我明天下午要去医院，但是没人陪我。')
+    submitElderMessage('朝阳医院，下午两点半。')
+  }
+
   return (
     <AppShell pageClassName="elder-theme">
       <div className="elder-home page-content page-content--narrow">
@@ -22,9 +27,17 @@ export function ElderHomePage() {
 
         <section className="request-box" aria-label="需求输入入口">
           <ElderConversation />
-          <button className="emergency-entry" type="button" onClick={() => submitElderMessage('我刚刚摔了一跤，现在起不来了。')}>
-            <AlertIcon /> 体验紧急情况
-          </button>
+          <div className="demo-case-actions" aria-label="独立 Mock Case 演示">
+            <span>以下按钮仅演示本地 Case 流程，不会发送给 Agent。</span>
+            <div>
+              <button className="case-demo-entry" type="button" onClick={createEscortDemo}>
+                体验陪诊 Case
+              </button>
+              <button className="emergency-entry" type="button" onClick={() => submitElderMessage('我刚刚摔了一跤，现在起不来了。')}>
+                <AlertIcon /> 体验紧急 Case
+              </button>
+            </div>
+          </div>
         </section>
 
         <section className="content-section">
