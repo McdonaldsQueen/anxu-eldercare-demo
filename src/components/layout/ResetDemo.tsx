@@ -15,8 +15,8 @@ export function ResetDemo() {
 
   if (isConfirming) {
     return (
-      <div className="reset-confirm" role="group" aria-label="确认重置 Demo">
-        <span>恢复初始状态？</span>
+      <div className="reset-confirm" role="group" aria-label="确认重置 Case 演示">
+        <span>重置 Mock Case？</span>
         <button type="button" onClick={() => setIsConfirming(false)}>
           取消
         </button>
@@ -33,7 +33,7 @@ export function ResetDemo() {
       className="reset-link"
       onClick={() => setIsConfirming(true)}
     >
-      重置 Demo
+      重置 Case 演示
     </button>
   )
 }

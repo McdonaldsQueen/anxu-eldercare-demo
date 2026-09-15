@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
+import { useOpenhexChat } from '@openhex-ai/agent-sdk/react'
 import { Link } from 'react-router-dom'
 import {
   createBrowserSpeechRecognition,
@@ -6,6 +7,7 @@ import {
   voiceErrorMessage,
   type SpeechRecognitionLike,
 } from '../../services/speechRecognition'
+import { getOpenhexToken } from '../../services/openhexToken'
 import { selectActiveSafetyCase, useDemoStore } from '../../store/demoStore'
 import { ArrowIcon, MicIcon, SparkIcon } from '../ui/Icons'
 import { RiskFollowUpPanel } from './RiskFollowUpPanel'
@@ -14,37 +16,51 @@ type VoiceState = 'IDLE' | 'REQUESTING' | 'LISTENING' | 'ERROR'
 
 export function ElderConversation() {
   const [input, setInput] = useState('')
+  const [sendError, setSendError] = useState('')
   const [voiceState, setVoiceState] = useState<VoiceState>('IDLE')
   const [voiceMessage, setVoiceMessage] = useState('')
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
   const voiceFailedRef = useRef(false)
-  const session = useDemoStore((state) => state.conversationState.elder)
-  const submitElderMessage = useDemoStore((state) => state.submitElderMessage)
   const activeSafetyCase = useDemoStore(selectActiveSafetyCase)
   const activeServiceCase = useDemoStore((state) =>
     Object.values(state.cases).find(
       (careCase) => careCase.caseType === 'MOBILITY' && careCase.status !== 'COMPLETED',
     ),
   )
+  const agentId = import.meta.env.VITE_OPENHEX_AGENT_ID?.trim()
+  const baseUrl = import.meta.env.VITE_OPENHEX_API_BASE_URL?.trim() || 'https://api.openhex.tech'
+  const chat = useOpenhexChat({
+    agentId: agentId || undefined,
+    baseUrl,
+    getToken: getOpenhexToken,
+    persist: 'anxu-eldercare-agent-chat',
+    senderName: '王阿姨',
+  })
 
   useEffect(() => () => recognitionRef.current?.stop(), [])
 
-  const send = () => {
+  const send = async () => {
     const text = input.trim()
-    if (!text) return
-    submitElderMessage(text)
-    setInput('')
+    if (!text || chat.isResponding || !agentId) return
+
+    setSendError('')
+    try {
+      await chat.send(text)
+      setInput('')
+    } catch (error) {
+      setSendError(error instanceof Error ? error.message : '发送失败，请稍后重试。')
+    }
   }
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    send()
+    void send()
   }
 
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
       event.preventDefault()
-      send()
+      void send()
     }
   }
 
@@ -121,14 +137,16 @@ export function ElderConversation() {
           </p>
         )}
 
-        {session.messages.length > 0 && (
+        {chat.messages.length > 0 && (
           <div className="conversation-thread" aria-live="polite" aria-label="与安序智护的对话">
-            {session.messages.map((message) => (
-              <div className={`message-row message-row--${message.sender.toLowerCase()}`} key={message.id}>
-                {message.sender === 'ASSISTANT' && <span className="message-avatar"><SparkIcon /></span>}
+            {chat.messages
+              .filter((message) => message.role !== 'system')
+              .map((message) => (
+              <div className={`message-row message-row--${message.role}`} key={message.id}>
+                {message.role === 'assistant' && <span className="message-avatar"><SparkIcon /></span>}
                 <div className="message-content">
-                  <span>{message.sender === 'USER' ? '王阿姨' : '安序智护'}</span>
-                  <p>{message.text}</p>
+                  <span>{message.role === 'user' ? '王阿姨' : message.agent?.name || '安序智护'}</span>
+                  <p>{message.text || (message.pending ? '正在思考…' : '')}</p>
                 </div>
               </div>
             ))}
@@ -146,6 +164,34 @@ export function ElderConversation() {
           </div>
         )}
 
+        {chat.isResponding && (
+          <div className="agent-status" role="status">
+            <span>安序智护正在回复…</span>
+            <button type="button" onClick={chat.interrupt}>停止回复</button>
+          </div>
+        )}
+
+        {!agentId && (
+          <p className="agent-error" role="alert">
+            尚未配置 OpenHex Agent，请设置 VITE_OPENHEX_AGENT_ID。
+          </p>
+        )}
+
+        {(sendError || chat.error) && (
+          <div className="agent-error" role="alert">
+            <span>{sendError || chat.error?.message || '发送失败，请稍后重试。'}</span>
+            <button
+              type="button"
+              onClick={() => {
+                setSendError('')
+                chat.retry()
+              }}
+            >
+              重试
+            </button>
+          </div>
+        )}
+
         <RiskFollowUpPanel />
 
         <form className="text-entry" aria-label="文字需求输入" onSubmit={handleSubmit}>
@@ -158,8 +204,11 @@ export function ElderConversation() {
             onKeyDown={handleKeyDown}
             placeholder="例如：我明天下午要去医院，但是没人陪我"
             autoComplete="off"
+            disabled={chat.isResponding || !agentId}
           />
-          <button type="submit" disabled={!input.trim()}>发送</button>
+          <button type="submit" disabled={!input.trim() || chat.isResponding || !agentId}>
+            {chat.isResponding ? '回复中' : '发送'}
+          </button>
         </form>
       </div>
     </>

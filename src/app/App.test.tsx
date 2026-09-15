@@ -7,10 +7,81 @@ import type {
   SpeechRecognitionResultEventLike,
 } from '../services/speechRecognition'
 
+const openhexMock = vi.hoisted(() => ({
+  send: vi.fn<(text: string) => Promise<string>>(),
+  retry: vi.fn(),
+  interrupt: vi.fn(),
+}))
+
+vi.mock('@openhex-ai/agent-sdk/react', async () => {
+  const React = await import('react')
+
+  interface MockChatMessage {
+    id: string
+    role: 'user' | 'assistant'
+    text: string
+    createdAt: number
+    pending?: boolean
+  }
+
+  return {
+    useOpenhexChat: () => {
+      const [messages, setMessages] = React.useState<MockChatMessage[]>([])
+      const [isResponding, setIsResponding] = React.useState(false)
+      const [error, setError] = React.useState<Error | null>(null)
+
+      const send = React.useCallback(async (text: string) => {
+        setError(null)
+        setIsResponding(true)
+        setMessages((current) => [
+          ...current,
+          { id: `user-${current.length + 1}`, role: 'user', text, createdAt: Date.now() },
+        ])
+        try {
+          const reply = await openhexMock.send(text)
+          setMessages((current) => [
+            ...current,
+            { id: `assistant-${current.length + 1}`, role: 'assistant', text: reply, createdAt: Date.now() },
+          ])
+        } catch (reason) {
+          const nextError = reason instanceof Error ? reason : new Error('发送失败')
+          setError(nextError)
+          throw nextError
+        } finally {
+          setIsResponding(false)
+        }
+      }, [])
+
+      return {
+        messages,
+        status: error ? 'error' : isResponding ? 'streaming' : 'idle',
+        error,
+        conversationId: messages.length ? 'test-conversation' : undefined,
+        isResponding,
+        audioPlayback: {},
+        playAudio: vi.fn(),
+        stopAudio: vi.fn(),
+        send,
+        submitConnectorSetup: vi.fn(),
+        submitInfoCollect: vi.fn(),
+        skipInfoCollect: vi.fn(),
+        downloadAttachment: vi.fn(),
+        interrupt: openhexMock.interrupt,
+        retry: openhexMock.retry,
+        clear: vi.fn(),
+      }
+    },
+  }
+})
+
 describe('Phase 1 and Phase 2 routes and interactions', () => {
   afterEach(cleanup)
 
   beforeEach(() => {
+    openhexMock.send.mockReset()
+    openhexMock.send.mockResolvedValue('这是来自 OpenHex Agent 的回复。')
+    openhexMock.retry.mockReset()
+    openhexMock.interrupt.mockReset()
     localStorage.clear()
     useDemoStore.getState().resetDemo()
     window.location.hash = '#/'
@@ -53,8 +124,8 @@ describe('Phase 1 and Phase 2 routes and interactions', () => {
     useDemoStore.getState().setActiveRole('FAMILY')
     render(<App />)
 
-    fireEvent.click(await screen.findByRole('button', { name: '重置 Demo' }))
-    expect(screen.getByText('恢复初始状态？')).toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', { name: '重置 Case 演示' }))
+    expect(screen.getByText('重置 Mock Case？')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '确认重置' }))
 
     await waitFor(() => expect(window.location.hash).toBe('#/'))
@@ -72,7 +143,7 @@ describe('Phase 1 and Phase 2 routes and interactions', () => {
     expect(await screen.findByRole('heading', { name: /能听懂需求/ })).toBeInTheDocument()
   })
 
-  it('accepts real keyboard input, clears each send, and creates one case after two turns', async () => {
+  it('sends keyboard input to OpenHex without mutating the Mock Case store', async () => {
     window.location.hash = '#/elder'
     render(<App />)
 
@@ -90,21 +161,64 @@ describe('Phase 1 and Phase 2 routes and interactions', () => {
       target: { value: '我明天下午要去医院，但是没人陪我。' },
     })
     fireEvent.keyDown(input, { key: 'Enter' })
+    expect(await screen.findByText('这是来自 OpenHex Agent 的回复。')).toBeInTheDocument()
     expect(input).toHaveValue('')
-    expect(await screen.findByText('可以，我帮您安排。您去哪家医院？大概几点的号？')).toBeInTheDocument()
     expect(useDemoStore.getState().cases).toEqual({})
     expect(input).toBeEnabled()
 
     fireEvent.change(input, { target: { value: '朝阳医院，下午两点半。' } })
     fireEvent.click(screen.getByRole('button', { name: '发送' }))
-    expect(input).toHaveValue('')
-    expect(await screen.findByText('好的，我记下了。我现在帮您联系服务中心安排陪诊，有结果马上告诉您。')).toBeInTheDocument()
-    expect(Object.keys(useDemoStore.getState().cases)).toEqual(['CASE-001'])
+    await waitFor(() => expect(input).toHaveValue(''))
+    expect(useDemoStore.getState().cases).toEqual({})
+    expect(input).toBeEnabled()
+    expect(openhexMock.send).toHaveBeenNthCalledWith(1, '我明天下午要去医院，但是没人陪我。')
+    expect(openhexMock.send).toHaveBeenNthCalledWith(2, '朝阳医院，下午两点半。')
+  })
+
+  it('creates both Mock Case paths only through their explicit demo buttons', async () => {
+    window.location.hash = '#/elder'
+    render(<App />)
+
+    fireEvent.click(await screen.findByRole('button', { name: '体验陪诊 Case' }))
+    expect(useDemoStore.getState().cases['CASE-001']).toMatchObject({
+      caseType: 'MOBILITY',
+      hospital: '朝阳医院',
+      appointmentTime: '明日 14:30',
+    })
+    expect(openhexMock.send).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: '体验紧急 Case' }))
+    expect(useDemoStore.getState().cases['CASE-002']).toMatchObject({
+      eventType: 'FALL',
+      priority: 'P0',
+    })
+    expect(openhexMock.send).not.toHaveBeenCalled()
+  })
+
+  it('prevents duplicate sends while responding and preserves the draft on failure', async () => {
+    let rejectTurn: ((reason: Error) => void) | undefined
+    openhexMock.send.mockImplementationOnce(() => new Promise<string>((_resolve, reject) => {
+      rejectTurn = reject
+    }))
+    window.location.hash = '#/elder'
+    render(<App />)
+
+    const input = await screen.findByLabelText('告诉安序智护您的需要')
+    fireEvent.change(input, { target: { value: '请帮我查询一下' } })
+    fireEvent.click(screen.getByRole('button', { name: '发送' }))
+
+    expect(await screen.findByText('安序智护正在回复…')).toBeInTheDocument()
+    expect(input).toBeDisabled()
+    fireEvent.submit(input.closest('form')!)
+    expect(openhexMock.send).toHaveBeenCalledTimes(1)
+
+    await act(async () => rejectTurn?.(new Error('网络暂时不可用')))
+    expect(await screen.findByText('网络暂时不可用')).toBeInTheDocument()
+    expect(input).toHaveValue('请帮我查询一下')
     expect(input).toBeEnabled()
 
-    fireEvent.change(input, { target: { value: '朝阳医院，下午两点半。' } })
-    fireEvent.click(screen.getByRole('button', { name: '发送' }))
-    expect(Object.keys(useDemoStore.getState().cases)).toEqual(['CASE-001'])
+    fireEvent.click(screen.getByRole('button', { name: '重试' }))
+    expect(openhexMock.retry).toHaveBeenCalledTimes(1)
   })
 
   it('completes the shared staff workflow and exposes the resolved state', async () => {
@@ -135,9 +249,7 @@ describe('Phase 1 and Phase 2 routes and interactions', () => {
     window.location.hash = '#/elder'
     render(<App />)
 
-    const input = await screen.findByLabelText('告诉安序智护您的需要')
-    fireEvent.change(input, { target: { value: '我刚刚摔了一跤，现在起不来了' } })
-    fireEvent.keyDown(input, { key: 'Enter' })
+    fireEvent.click(await screen.findByRole('button', { name: '体验紧急 Case' }))
 
     expect(await screen.findByRole('heading', { name: '检测到跌倒相关安全风险' })).toBeInTheDocument()
     expect(useDemoStore.getState().cases['CASE-002']).toMatchObject({
@@ -218,7 +330,8 @@ describe('Phase 1 and Phase 2 routes and interactions', () => {
     expect(useDemoStore.getState().conversationState.elder.messages).toHaveLength(0)
     fireEvent.change(input, { target: { value: '我现在喘不上气，请帮帮我' } })
     fireEvent.click(screen.getByRole('button', { name: '发送' }))
-    expect(useDemoStore.getState().cases['CASE-002'].eventType).toBe('BREATHING_DIFFICULTY')
+    await waitFor(() => expect(openhexMock.send).toHaveBeenCalledWith('我现在喘不上气，请帮帮我'))
+    expect(useDemoStore.getState().cases).toEqual({})
   })
 
   it('keeps text input usable after microphone permission is rejected', async () => {
@@ -249,8 +362,8 @@ describe('Phase 1 and Phase 2 routes and interactions', () => {
     expect(input).toBeEnabled()
     fireEvent.change(input, { target: { value: '我想说件事情' } })
     fireEvent.click(screen.getByRole('button', { name: '发送' }))
+    expect(await screen.findByText('这是来自 OpenHex Agent 的回复。')).toBeInTheDocument()
     expect(input).toHaveValue('')
-    expect(await screen.findByText(/我还没完全听明白/)).toBeInTheDocument()
   })
 
   it('renders event-specific risk follow-up options', async () => {
