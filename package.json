@@ -5,11 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:server": "node --env-file-if-exists=server/.env server/openhex-server.mjs",
+    "dev:all": "concurrently -n web,openhex -c green,cyan \"npm:dev\" \"npm:dev:server\"",
     "build": "tsc -b && vite build",
     "test": "vitest run",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@openhex-ai/agent-sdk": "^0.5.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.9.1",
@@ -21,6 +24,7 @@
     "@types/react": "^19.1.16",
     "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react": "^5.0.4",
+    "concurrently": "^10.0.5",
     "jsdom": "^27.0.0",
     "typescript": "~5.9.3",
     "vite": "^7.1.7",

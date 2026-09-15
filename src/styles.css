@@ -100,7 +100,18 @@ button:disabled { cursor: not-allowed; }
 .text-entry button:not(:disabled) { color: white; background: var(--green); cursor: pointer; }
 .emergency-entry { justify-self: start; padding: 6px 8px; display: inline-flex; align-items: center; gap: 7px; border: 0; border-radius: 8px; color: #9a463f; background: #fff2ef; cursor: pointer; }
 .emergency-entry svg { width: 18px; }
+.request-box:has(.elder-conversation--openhex) .emergency-entry { display: none; }
 .elder-conversation { min-width: 0; }
+.experience-mode { margin-bottom: 12px; display: flex; align-items: center; flex-wrap: wrap; gap: 7px; color: var(--muted); font-size: 12px; }
+.experience-mode > span { margin-right: 2px; }
+.experience-mode button { padding: 6px 10px; border: 1px solid #d8ded8; border-radius: 999px; color: #66736c; background: #f8faf7; cursor: pointer; }
+.experience-mode button.is-active { border-color: var(--green); color: #fff; background: var(--green); }
+.openhex-session-status { margin-bottom: 12px; padding: 10px 12px; display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; border: 1px solid #cbdccf; border-radius: 12px; color: #52645b; background: #f2f8f2; font-size: 12px; }
+.openhex-session-status span { flex: 1 1 220px; }
+.openhex-session-status code { max-width: 100%; padding: 3px 6px; overflow-wrap: anywhere; border-radius: 5px; color: #305f50; background: #e3eee5; }
+.openhex-session-status button { padding: 5px 8px; border: 0; border-radius: 7px; color: var(--green); background: #fff; cursor: pointer; }
+.openhex-feedback { margin: 0 0 10px; color: var(--green); font-size: 13px; line-height: 1.5; }
+.openhex-feedback--error { color: var(--danger); }
 .conversation-thread { margin-bottom: 13px; padding: 18px; display: grid; gap: 14px; border-radius: 18px; background: #f2f5f0; }
 .message-row { display: flex; align-items: flex-start; gap: 10px; }
 .message-row--user { justify-content: flex-end; }
