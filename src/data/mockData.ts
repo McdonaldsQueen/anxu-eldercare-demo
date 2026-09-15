@@ -1,6 +1,6 @@
 import type { ConversationState, Role } from '../domain/models'
 
-export const DEMO_SCHEMA_VERSION = 4
+export const DEMO_SCHEMA_VERSION = 5
 
 export const PEOPLE = {
   elder: { id: 'E001', name: '王阿姨', role: 'ELDER' as Role },
@@ -39,6 +39,7 @@ const emptySession = () => ({
   lastAgentQuestion: null,
   collectedInformation: {
     serviceRequest: null,
+    familyRequest: null,
     riskEventType: null,
     riskDetails: [],
     additionalDetails: [],

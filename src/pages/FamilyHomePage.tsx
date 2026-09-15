@@ -7,6 +7,7 @@ import { Link } from 'react-router-dom'
 import { DAILY_ACTIVITIES } from '../data/mockData'
 import { RISK_CATALOG } from '../domain/riskCatalog'
 import { selectActiveCases, selectCompletedCases, useDemoStore } from '../store/demoStore'
+import { FamilyConversation } from '../components/conversation/FamilyConversation'
 
 export function FamilyHomePage() {
   const activeCases = useDemoStore(useShallow(selectActiveCases))
@@ -14,8 +15,9 @@ export function FamilyHomePage() {
   const safetyCases = activeCases.filter((careCase) => careCase.caseType === 'SAFETY')
   const serviceCases = activeCases.filter((careCase) => careCase.caseType !== 'SAFETY')
   const activeSafetyCase = safetyCases[0]
-  const activeRiskDefinition = activeSafetyCase?.eventType
-    ? RISK_CATALOG[activeSafetyCase.eventType]
+  const activeRiskType = activeSafetyCase?.finalRiskType ?? activeSafetyCase?.eventType
+  const activeRiskDefinition = activeRiskType
+    ? RISK_CATALOG[activeRiskType]
     : null
 
   const riskMessage = activeSafetyCase?.status === 'IN_PROGRESS'
@@ -59,8 +61,8 @@ export function FamilyHomePage() {
             <span className="assistant-icon"><SparkIcon /></span>
             <p className="eyebrow">安序智护</p>
             <h2>有什么想了解的？</h2>
-            <p>后续可以在这里询问妈妈的服务安排和处理进度。</p>
-            <div className="query-preview"><span>输入您想了解的事情</span><button type="button" disabled>询问</button></div>
+            <p>可以提交联系确认或物品转交需求，处理结果会同步在本页。</p>
+            <FamilyConversation />
           </aside>
         </div>
 

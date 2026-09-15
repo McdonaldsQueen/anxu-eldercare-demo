@@ -8,7 +8,7 @@ import {
 } from '../../services/speechRecognition'
 import { sendOpenhexMessage } from '../../services/openhexChat'
 import type { ConversationMessage } from '../../domain/models'
-import { selectActiveSafetyCase, useDemoStore } from '../../store/demoStore'
+import { useDemoStore } from '../../store/demoStore'
 import { ArrowIcon, MicIcon, SparkIcon } from '../ui/Icons'
 import { RiskFollowUpPanel } from './RiskFollowUpPanel'
 
@@ -30,10 +30,9 @@ export function ElderConversation() {
   const voiceFailedRef = useRef(false)
   const session = useDemoStore((state) => state.conversationState.elder)
   const submitElderMessage = useDemoStore((state) => state.submitElderMessage)
-  const activeSafetyCase = useDemoStore(selectActiveSafetyCase)
   const activeServiceCase = useDemoStore((state) =>
     Object.values(state.cases).find(
-      (careCase) => careCase.caseType === 'MOBILITY' && careCase.status !== 'COMPLETED',
+      (careCase) => ['SERVICE', 'MOBILITY'].includes(careCase.caseType) && careCase.status !== 'COMPLETED',
     ),
   )
 
@@ -221,7 +220,7 @@ export function ElderConversation() {
                 </div>
               </div>
             ))}
-            {experienceMode === 'MOCK' && activeServiceCase && !activeSafetyCase && (
+            {experienceMode === 'MOCK' && activeServiceCase && session.activeCaseId === activeServiceCase.caseId && (
               <div className="conversation-created-case" role="status">
                 <div>
                   <span>已生成一件正在处理的事情</span>

@@ -4,9 +4,11 @@ import { AlertIcon, CheckIcon } from '../ui/Icons'
 
 export function RiskFollowUpPanel() {
   const careCase = useDemoStore(selectActiveSafetyCase)
+  const session = useDemoStore((state) => state.conversationState.elder)
   const recordRiskFollowUp = useDemoStore((state) => state.recordRiskFollowUp)
 
-  if (!careCase?.eventType) return null
+  if (!careCase?.eventType || session.activeCaseId !== careCase.caseId ||
+    !['COLLECTING_RISK', 'OPEN_RISK_DESCRIPTION', 'ACTIVE_RISK'].includes(session.conversationMode)) return null
 
   const followUpType = careCase.latestRiskEventType ?? careCase.eventType
   const definition = RISK_CATALOG[followUpType]
@@ -37,7 +39,7 @@ export function RiskFollowUpPanel() {
           })}
         </div>
       </fieldset>
-      <small>以上信息只用于帮助工作人员了解情况，不作医疗判断。选择后仍会保持 P0，由工作人员继续处理。</small>
+      <small>以上信息只用于帮助工作人员了解情况，不作医疗判断。AI 建议等级不会替代工作人员最终确认。</small>
     </section>
   )
 }

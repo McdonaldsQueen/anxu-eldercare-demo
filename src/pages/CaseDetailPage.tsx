@@ -8,6 +8,7 @@ import { useDemoStore } from '../store/demoStore'
 const SERVICE_STATUS_LABELS: Record<CareCaseStatus, string> = {
   WAITING: '正在安排工作人员',
   ACCEPTED: '工作人员已接单',
+  DECLINED: '评估后暂不承接',
   WAITING_FOR_REVIEW: '等待工作人员确认',
   CONFIRMED: '风险已人工确认',
   IN_PROGRESS: '陪诊服务进行中',
@@ -17,6 +18,7 @@ const SERVICE_STATUS_LABELS: Record<CareCaseStatus, string> = {
 const SAFETY_STATUS_LABELS: Record<CareCaseStatus, string> = {
   WAITING: '等待工作人员确认',
   ACCEPTED: '工作人员已确认',
+  DECLINED: '已标记为非安全事件',
   WAITING_FOR_REVIEW: '等待工作人员确认',
   CONFIRMED: '工作人员已确认风险',
   IN_PROGRESS: '工作人员已介入处理',
@@ -63,7 +65,8 @@ export function CaseDetailPage({ role }: { role: Extract<Role, 'ELDER' | 'FAMILY
   }
 
   const isSafety = careCase.caseType === 'SAFETY'
-  const riskDefinition = careCase.eventType ? RISK_CATALOG[careCase.eventType] : null
+  const displayedRiskType = careCase.finalRiskType ?? careCase.eventType
+  const riskDefinition = displayedRiskType ? RISK_CATALOG[displayedRiskType] : null
   const [appointmentDate = '', appointmentClock = ''] = careCase.appointmentTime?.split(' ') ?? []
   const escortPeriod = Number(appointmentClock.split(':')[0]) >= 12 ? '下午' : '上午'
   const audience = role === 'ELDER'
@@ -86,8 +89,8 @@ export function CaseDetailPage({ role }: { role: Extract<Role, 'ELDER' | 'FAMILY
           <span className={`detail-hero__icon ${isSafety ? 'detail-hero__icon--risk' : ''}`}>{isSafety ? <AlertIcon /> : <ClipboardIcon />}</span>
           <div>
             <p className="eyebrow">{audience}</p>
-            <h1>{isSafety ? riskDefinition?.caseTitle : `${appointmentDate}${escortPeriod}陪诊`}</h1>
-            <p>{isSafety ? `王阿姨 · ${careCase.selfHandling === 'UNABLE' ? '当前无法自行起身' : riskDefinition?.reportSummary}` : `王阿姨 · ${careCase.hospital} · ${careCase.appointmentTime}`}</p>
+            <h1>{isSafety ? riskDefinition?.caseTitle : careCase.serviceType === 'MEDICAL_ESCORT' ? `${appointmentDate}${escortPeriod}陪诊` : careCase.title ?? '服务需求'}</h1>
+            <p>{isSafety ? `王阿姨 · ${careCase.selfHandling === 'UNABLE' ? '当前无法自行起身' : riskDefinition?.reportSummary}` : `王阿姨 · ${careCase.requestSummary ?? [careCase.hospital, careCase.appointmentTime].filter(Boolean).join(' · ')}`}</p>
           </div>
           <span className={`detail-status detail-status--${careCase.status.toLowerCase()} ${isSafety ? 'detail-status--risk' : ''}`}>
             {statusLabel}
@@ -118,6 +121,18 @@ export function CaseDetailPage({ role }: { role: Extract<Role, 'ELDER' | 'FAMILY
             <p>{careCase.additionalInformation.slice(1).join('；')}</p>
             <small>补充内容会进入同一个安全事件，不会自动改变 P0 等级。</small>
           </section>
+        )}
+        {careCase.itemType && (
+          <section className="safety-supplement">
+            <strong>物品转交信息</strong>
+            <p>{careCase.itemType === 'MEDICINE' ? '药品' : '普通物品'}：{careCase.itemName ?? '未填写'}</p>
+            {careCase.providedDosageInstructions && <p>家属提供的用法信息：{careCase.providedDosageInstructions}</p>}
+            {careCase.specialInstruction && <p>特殊要求：{careCase.specialInstruction}</p>}
+            <small>仅记录家属原话，不构成剂量、用法或医疗建议。</small>
+          </section>
+        )}
+        {careCase.status === 'DECLINED' && (
+          <section className="safety-supplement"><strong>评估结果：暂不承接</strong><p>{careCase.evaluationReason}</p></section>
         )}
 
         <section className="panel detail-panel">
