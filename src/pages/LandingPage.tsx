@@ -32,6 +32,7 @@ export function LandingPage() {
 
   return (
     <div className="landing-page">
+      <a className="skip-link" href="#main-content">跳到主要内容</a>
       <header className="landing-nav">
         <div className="brand">
           <span className="brand__mark"><ShieldHeartIcon /></span>
@@ -40,7 +41,7 @@ export function LandingPage() {
         <span className="mock-pill">产品概念 Demo</span>
       </header>
 
-      <main className="landing-main">
+      <main className="landing-main" id="main-content">
         <section className="hero">
           <div className="hero__copy">
             <p className="hero__kicker"><SparkIcon /> 把每一份需要，接住并办下去</p>
@@ -48,6 +49,11 @@ export function LandingPage() {
             <p className="hero__description">
               从老人一句自然语言开始，理解需求、协调服务、同步家属，并持续跟进到事情解决。
             </p>
+            <div className="hero__trust" aria-label="产品能力摘要">
+              <span>真实 Agent 对话</span>
+              <span>三角色进度同步</span>
+              <span>安全事件人工确认</span>
+            </div>
             <button className="primary-button" type="button" onClick={() => enterAs('ELDER')}>
               开始完整体验 <ArrowIcon />
             </button>
@@ -81,7 +87,7 @@ export function LandingPage() {
         </section>
       </main>
 
-      <footer className="landing-footer">所有人物与服务信息均为演示数据</footer>
+      <footer className="landing-footer">产品概念演示 · 对话由 OpenHex Agent 提供 · Case 与服务信息为 Mock Data</footer>
     </div>
   )
 }

@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 import { useDemoStore } from '../store/demoStore'
+import { useDemoUiStore } from '../store/demoUiStore'
 import type {
   SpeechRecognitionErrorEventLike,
   SpeechRecognitionResultEventLike,
@@ -11,6 +12,7 @@ const openhexMock = vi.hoisted(() => ({
   send: vi.fn<(text: string) => Promise<string>>(),
   retry: vi.fn(),
   interrupt: vi.fn(),
+  lastOptions: null as Record<string, unknown> | null,
 }))
 
 vi.mock('@openhex-ai/agent-sdk/react', async () => {
@@ -25,7 +27,8 @@ vi.mock('@openhex-ai/agent-sdk/react', async () => {
   }
 
   return {
-    useOpenhexChat: () => {
+    useOpenhexChat: (options: Record<string, unknown>) => {
+      openhexMock.lastOptions = options
       const [messages, setMessages] = React.useState<MockChatMessage[]>([])
       const [isResponding, setIsResponding] = React.useState(false)
       const [error, setError] = React.useState<Error | null>(null)
@@ -43,9 +46,13 @@ vi.mock('@openhex-ai/agent-sdk/react', async () => {
             ...current,
             { id: `assistant-${current.length + 1}`, role: 'assistant', text: reply, createdAt: Date.now() },
           ])
+          ;(options.onTurnComplete as ((message: MockChatMessage) => void) | undefined)?.({
+            id: 'complete', role: 'assistant', text: reply, createdAt: Date.now(),
+          })
         } catch (reason) {
           const nextError = reason instanceof Error ? reason : new Error('发送失败')
           setError(nextError)
+          ;(options.onError as ((error: Error) => void) | undefined)?.(nextError)
           throw nextError
         } finally {
           setIsResponding(false)
@@ -82,8 +89,12 @@ describe('Phase 1 and Phase 2 routes and interactions', () => {
     openhexMock.send.mockResolvedValue('这是来自 OpenHex Agent 的回复。')
     openhexMock.retry.mockReset()
     openhexMock.interrupt.mockReset()
+    openhexMock.lastOptions = null
+    vi.unstubAllEnvs()
     localStorage.clear()
+    sessionStorage.clear()
     useDemoStore.getState().resetDemo()
+    useDemoUiStore.getState().setExperienceMode('OPENHEX')
     window.location.hash = '#/'
     Object.defineProperty(window, 'SpeechRecognition', { value: undefined, configurable: true, writable: true })
     Object.defineProperty(window, 'webkitSpeechRecognition', { value: undefined, configurable: true, writable: true })
@@ -124,7 +135,8 @@ describe('Phase 1 and Phase 2 routes and interactions', () => {
     useDemoStore.getState().setActiveRole('FAMILY')
     render(<App />)
 
-    fireEvent.click(await screen.findByRole('button', { name: '重置 Case 演示' }))
+    fireEvent.click(await screen.findByRole('button', { name: /演示工具/ }))
+    fireEvent.click(screen.getByRole('button', { name: '重置 Case 演示' }))
     expect(screen.getByText('重置 Mock Case？')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '确认重置' }))
 
@@ -173,12 +185,24 @@ describe('Phase 1 and Phase 2 routes and interactions', () => {
     expect(input).toBeEnabled()
     expect(openhexMock.send).toHaveBeenNthCalledWith(1, '我明天下午要去医院，但是没人陪我。')
     expect(openhexMock.send).toHaveBeenNthCalledWith(2, '朝阳医院，下午两点半。')
+    expect(openhexMock.lastOptions).toMatchObject({ idleTimeoutMs: 300_000 })
+  })
+
+  it('accepts a valid OpenHex idle timeout override', async () => {
+    vi.stubEnv('VITE_OPENHEX_IDLE_TIMEOUT_MS', '420000')
+    window.location.hash = '#/elder'
+
+    render(<App />)
+
+    await screen.findByLabelText('告诉安序智护您的需要')
+    expect(openhexMock.lastOptions).toMatchObject({ idleTimeoutMs: 420_000 })
   })
 
   it('creates both Mock Case paths only through their explicit demo buttons', async () => {
     window.location.hash = '#/elder'
     render(<App />)
 
+    fireEvent.click(await screen.findByRole('button', { name: /演示工具/ }))
     fireEvent.click(await screen.findByRole('button', { name: '体验陪诊 Case' }))
     expect(useDemoStore.getState().cases['CASE-001']).toMatchObject({
       caseType: 'SERVICE',
@@ -207,18 +231,35 @@ describe('Phase 1 and Phase 2 routes and interactions', () => {
     fireEvent.change(input, { target: { value: '请帮我查询一下' } })
     fireEvent.click(screen.getByRole('button', { name: '发送' }))
 
-    expect(await screen.findByText('安序智护正在回复…')).toBeInTheDocument()
+    expect(await screen.findByText('正在连接安序智护…')).toBeInTheDocument()
     expect(input).toBeDisabled()
     fireEvent.submit(input.closest('form')!)
     expect(openhexMock.send).toHaveBeenCalledTimes(1)
 
     await act(async () => rejectTurn?.(new Error('网络暂时不可用')))
-    expect(await screen.findByText('网络暂时不可用')).toBeInTheDocument()
+    expect(await screen.findByText('网络连接中断，请检查网络后重新连接。')).toBeInTheDocument()
     expect(input).toHaveValue('请帮我查询一下')
     expect(input).toBeEnabled()
 
     fireEvent.click(screen.getByRole('button', { name: '重试' }))
     expect(openhexMock.retry).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not blindly resend after an idle timeout', async () => {
+    const timeoutError = new Error('idle timeout')
+    timeoutError.name = 'AbortError'
+    openhexMock.send.mockRejectedValueOnce(timeoutError)
+    window.location.hash = '#/elder'
+    render(<App />)
+
+    const input = await screen.findByLabelText('告诉安序智护您的需要')
+    fireEvent.change(input, { target: { value: '请完成一个耗时任务' } })
+    fireEvent.click(screen.getByRole('button', { name: '发送' }))
+
+    expect(await screen.findByText(/等待回复超过 5 分钟/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '重新连接并同步会话' })).toBeInTheDocument()
+    expect(openhexMock.retry).not.toHaveBeenCalled()
+    expect(input).toHaveValue('请完成一个耗时任务')
   })
 
   it('completes the shared staff workflow and exposes the resolved state', async () => {
@@ -249,6 +290,7 @@ describe('Phase 1 and Phase 2 routes and interactions', () => {
     window.location.hash = '#/elder'
     render(<App />)
 
+    fireEvent.click(await screen.findByRole('button', { name: /演示工具/ }))
     fireEvent.click(await screen.findByRole('button', { name: '体验紧急 Case' }))
 
     expect(await screen.findByRole('heading', { name: '检测到跌倒相关安全风险' })).toBeInTheDocument()
@@ -368,6 +410,7 @@ describe('Phase 1 and Phase 2 routes and interactions', () => {
 
   it('renders event-specific risk follow-up options', async () => {
     window.location.hash = '#/elder'
+    useDemoUiStore.getState().setExperienceMode('PHASE4')
     useDemoStore.getState().submitElderMessage('我现在喘不上气')
     render(<App />)
 
