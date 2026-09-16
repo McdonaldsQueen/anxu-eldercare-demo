@@ -44,6 +44,8 @@ npm run build
 
 ## Vercel 部署
 
+完整的生产发布、验收、故障处理和回滚流程见 [Vercel Production 部署手册](./VERCEL_PRODUCTION_DEPLOYMENT.md)。
+
 1. 在 Vercel 中导入本 GitHub 仓库，Framework Preset 选择 Vite。
 2. 在 Production、Preview 和需要使用的 Development 环境中配置上表四个变量。
 3. 保持 Build Command 为 `npm run build`，Output Directory 为 `dist`。
