@@ -50,4 +50,18 @@ describe('OpenHex diagnostics', () => {
     expect(serialized).not.toContain('secret')
     expect(serialized).not.toContain('private text')
   })
+
+  it('captures the conversation id from a send response without storing it', async () => {
+    const onConversationId = vi.fn()
+    const request = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ conversationId: 'conversation-secret-id' }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ))
+    const diagnosticFetch = createOpenhexDiagnosticFetch(request, Date.now, onConversationId)
+
+    await diagnosticFetch('https://api.openhex.tech/api/v2/conversations/send', { method: 'POST' })
+    await vi.waitFor(() => expect(onConversationId).toHaveBeenCalledWith('conversation-secret-id'))
+
+    expect(JSON.stringify(getOpenhexDiagnostics())).not.toContain('conversation-secret-id')
+  })
 })

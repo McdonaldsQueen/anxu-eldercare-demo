@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
-import { useOpenhexChat } from '@openhex-ai/agent-sdk/react'
+import { resolveChatClient, useOpenhexChat } from '@openhex-ai/agent-sdk/react'
 import { Link } from 'react-router-dom'
 import {
   createBrowserSpeechRecognition,
@@ -14,6 +14,12 @@ import {
   openhexErrorMessage,
   recordOpenhexDiagnostic,
 } from '../../services/openhexDiagnostics'
+import {
+  foldOpenhexHistory,
+  historyHasCompletedTurn,
+  mergeSyncedOpenhexMessages,
+  type SyncedOpenhexHistory,
+} from '../../services/openhexHistorySync'
 import { getOpenhexToken, resetOpenhexTokenCache } from '../../services/openhexToken'
 import { useDemoStore } from '../../store/demoStore'
 import { useDemoUiStore } from '../../store/demoUiStore'
@@ -35,12 +41,17 @@ export function ElderConversation() {
   const [voiceState, setVoiceState] = useState<VoiceState>('IDLE')
   const [voiceMessage, setVoiceMessage] = useState('')
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
+  const [transportConversationId, setTransportConversationId] = useState<string>()
+  const [syncedHistory, setSyncedHistory] = useState<SyncedOpenhexHistory | null>(null)
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
+  const threadRef = useRef<HTMLDivElement | null>(null)
   const voiceFailedRef = useRef(false)
   const turnStartedAtRef = useRef<number | null>(null)
   const firstEventRecordedRef = useRef(false)
   const firstTextRecordedRef = useRef(false)
   const existingAssistantIdsRef = useRef<Set<string>>(new Set())
+  const reconciledTurnStartedAtRef = useRef<number | null>(null)
+  const isRespondingRef = useRef(false)
   const experienceMode = useDemoUiStore((state) => state.experienceMode)
   const session = useDemoStore((state) => state.conversationState.elder)
   const submitElderMessage = useDemoStore((state) => state.submitElderMessage)
@@ -51,13 +62,20 @@ export function ElderConversation() {
   )
   const agentId = import.meta.env.VITE_OPENHEX_AGENT_ID?.trim()
   const baseUrl = import.meta.env.VITE_OPENHEX_API_BASE_URL?.trim() || 'https://api.openhex.tech'
-  const diagnosticFetch = useMemo(() => createOpenhexDiagnosticFetch(), [])
-  const idleTimeoutMs = configuredIdleTimeout()
-  const chat = useOpenhexChat({
-    agentId: agentId || undefined,
+  const diagnosticFetch = useMemo(() => createOpenhexDiagnosticFetch(
+    globalThis.fetch,
+    Date.now,
+    setTransportConversationId,
+  ), [])
+  const chatClient = useMemo(() => resolveChatClient({
     baseUrl,
     getToken: getOpenhexToken,
     fetch: diagnosticFetch,
+  }), [baseUrl, diagnosticFetch])
+  const idleTimeoutMs = configuredIdleTimeout()
+  const chat = useOpenhexChat({
+    client: chatClient,
+    agentId: agentId || undefined,
     idleTimeoutMs,
     persist: 'anxu-eldercare-agent-chat',
     senderName: '王阿姨',
@@ -78,6 +96,13 @@ export function ElderConversation() {
       })
     },
   })
+  const activeConversationId = chat.conversationId ?? transportConversationId
+  const openhexMessages = useMemo(() => mergeSyncedOpenhexMessages(
+    chat.messages,
+    syncedHistory,
+    activeConversationId,
+  ), [activeConversationId, chat.messages, syncedHistory])
+  isRespondingRef.current = chat.isResponding
 
   useEffect(() => () => recognitionRef.current?.stop(), [])
 
@@ -103,6 +128,54 @@ export function ElderConversation() {
   }, [chat.conversationId])
 
   useEffect(() => {
+    const turnStartedAt = turnStartedAtRef.current
+    if (
+      experienceMode !== 'OPENHEX'
+      || !chat.isResponding
+      || !activeConversationId
+      || !turnStartedAt
+      || reconciledTurnStartedAtRef.current === turnStartedAt
+    ) return
+
+    let stopped = false
+    let timer: number | undefined
+
+    const pollHistory = async () => {
+      try {
+        const history = await chatClient.messages(activeConversationId)
+        if (stopped) return
+
+        if (historyHasCompletedTurn(history.entries, turnStartedAt)) {
+          reconciledTurnStartedAtRef.current = turnStartedAt
+          setSyncedHistory({
+            conversationId: activeConversationId,
+            messages: foldOpenhexHistory(history.entries),
+            syncedAt: Date.now(),
+          })
+          recordOpenhexDiagnostic({
+            phase: 'complete',
+            outcome: 'success',
+            durationMs: Date.now() - turnStartedAt,
+            conversationSuffix: conversationSuffix(activeConversationId),
+          })
+          if (isRespondingRef.current) chat.interrupt()
+          return
+        }
+      } catch {
+        // The diagnostic fetch records the failure; the active SSE remains primary.
+      }
+
+      if (!stopped) timer = window.setTimeout(() => void pollHistory(), 2_000)
+    }
+
+    void pollHistory()
+    return () => {
+      stopped = true
+      if (timer !== undefined) window.clearTimeout(timer)
+    }
+  }, [activeConversationId, chat.interrupt, chat.isResponding, chatClient, experienceMode])
+
+  useEffect(() => {
     if (chat.status !== 'streaming' || firstEventRecordedRef.current) return
     firstEventRecordedRef.current = true
     recordOpenhexDiagnostic({
@@ -115,7 +188,7 @@ export function ElderConversation() {
 
   useEffect(() => {
     if (firstTextRecordedRef.current) return
-    const hasAssistantText = chat.messages.some((message) =>
+    const hasAssistantText = openhexMessages.some((message) =>
       message.role === 'assistant'
       && !existingAssistantIdsRef.current.has(message.id)
       && message.text.trim(),
@@ -128,7 +201,12 @@ export function ElderConversation() {
       durationMs: turnStartedAtRef.current ? Date.now() - turnStartedAtRef.current : undefined,
       conversationSuffix: conversationSuffix(chat.conversationId),
     })
-  }, [chat.conversationId, chat.messages])
+  }, [chat.conversationId, openhexMessages])
+
+  useEffect(() => {
+    if (!threadRef.current || experienceMode !== 'OPENHEX') return
+    threadRef.current.scrollTop = threadRef.current.scrollHeight
+  }, [experienceMode, openhexMessages])
 
   const send = async () => {
     const text = input.trim()
@@ -146,6 +224,7 @@ export function ElderConversation() {
     turnStartedAtRef.current = Date.now()
     firstEventRecordedRef.current = false
     firstTextRecordedRef.current = false
+    reconciledTurnStartedAtRef.current = null
     existingAssistantIdsRef.current = new Set(
       chat.messages
         .filter((message) => message.role === 'assistant')
@@ -228,7 +307,7 @@ export function ElderConversation() {
   const errorOutcome = visibleError
     ? classifyOpenhexFailure(visibleError, (visibleError as { status?: number }).status)
     : null
-  const hasStreamingText = chat.messages.some((message) => message.role === 'assistant' && message.pending && message.text.trim())
+  const hasStreamingText = openhexMessages.some((message) => message.role === 'assistant' && message.streaming && message.text.trim())
   const responseStatus = hasStreamingText
     ? '正在生成回复…'
     : elapsedSeconds < 15
@@ -263,23 +342,23 @@ export function ElderConversation() {
         </p>
       )}
 
-      {experienceMode === 'OPENHEX' && chat.messages.length > 0 && (
-        <div className="conversation-thread" aria-live="polite" aria-label="与安序智护的对话">
-          {chat.messages
+      {experienceMode === 'OPENHEX' && openhexMessages.length > 0 && (
+        <div ref={threadRef} className="conversation-thread" aria-live="polite" aria-label="与安序智护的对话">
+          {openhexMessages
             .filter((message) => message.role !== 'system')
             .map((message) => (
               <div className={`message-row message-row--${message.role}`} key={message.id}>
                 {message.role === 'assistant' && <span className="message-avatar"><SparkIcon /></span>}
                 <div className="message-content">
                   <span>{message.role === 'user' ? '王阿姨' : message.agent?.name || '安序智护'}</span>
-                  <p>{message.text || (message.pending ? '正在思考…' : '')}</p>
+                  <p>{message.text || (message.pending || message.streaming ? '正在思考…' : '')}</p>
                 </div>
               </div>
             ))}
         </div>
       )}
 
-      {experienceMode === 'OPENHEX' && chat.messages.length === 0 && (
+      {experienceMode === 'OPENHEX' && openhexMessages.length === 0 && (
         <div className="conversation-empty">
           <span><SparkIcon /></span>
           <div><strong>我在这里，您慢慢说</strong><p>可以问日常生活，也可以说说今天需要什么帮助。</p></div>

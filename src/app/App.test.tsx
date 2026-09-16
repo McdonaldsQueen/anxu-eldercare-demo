@@ -10,6 +10,7 @@ import type {
 
 const openhexMock = vi.hoisted(() => ({
   send: vi.fn<(text: string) => Promise<string>>(),
+  history: vi.fn(),
   retry: vi.fn(),
   interrupt: vi.fn(),
   lastOptions: null as Record<string, unknown> | null,
@@ -17,6 +18,7 @@ const openhexMock = vi.hoisted(() => ({
 
 vi.mock('@openhex-ai/agent-sdk/react', async () => {
   const React = await import('react')
+  const actual = await vi.importActual<typeof import('@openhex-ai/agent-sdk/react')>('@openhex-ai/agent-sdk/react')
 
   interface MockChatMessage {
     id: string
@@ -27,6 +29,8 @@ vi.mock('@openhex-ai/agent-sdk/react', async () => {
   }
 
   return {
+    ...actual,
+    resolveChatClient: () => ({ messages: openhexMock.history }),
     useOpenhexChat: (options: Record<string, unknown>) => {
       openhexMock.lastOptions = options
       const [messages, setMessages] = React.useState<MockChatMessage[]>([])
@@ -59,6 +63,12 @@ vi.mock('@openhex-ai/agent-sdk/react', async () => {
         }
       }, [])
 
+      const interrupt = React.useCallback(() => {
+        openhexMock.interrupt()
+        setIsResponding(false)
+        setMessages((current) => current.filter((message) => !(message.role === 'assistant' && message.pending)))
+      }, [])
+
       return {
         messages,
         status: error ? 'error' : isResponding ? 'streaming' : 'idle',
@@ -73,7 +83,7 @@ vi.mock('@openhex-ai/agent-sdk/react', async () => {
         submitInfoCollect: vi.fn(),
         skipInfoCollect: vi.fn(),
         downloadAttachment: vi.fn(),
-        interrupt: openhexMock.interrupt,
+        interrupt,
         retry: openhexMock.retry,
         clear: vi.fn(),
       }
@@ -87,6 +97,8 @@ describe('Phase 1 and Phase 2 routes and interactions', () => {
   beforeEach(() => {
     openhexMock.send.mockReset()
     openhexMock.send.mockResolvedValue('这是来自 OpenHex Agent 的回复。')
+    openhexMock.history.mockReset()
+    openhexMock.history.mockResolvedValue({ entries: [], hasMore: false })
     openhexMock.retry.mockReset()
     openhexMock.interrupt.mockReset()
     openhexMock.lastOptions = null
@@ -260,6 +272,48 @@ describe('Phase 1 and Phase 2 routes and interactions', () => {
     expect(screen.getByRole('button', { name: '重新连接并同步会话' })).toBeInTheDocument()
     expect(openhexMock.retry).not.toHaveBeenCalled()
     expect(input).toHaveValue('请完成一个耗时任务')
+  })
+
+  it('shows a completed history reply immediately when the live stream misses its final text', async () => {
+    const timestamp = Date.now()
+    openhexMock.send.mockImplementationOnce(() => new Promise<string>(() => undefined))
+    openhexMock.history.mockResolvedValue({
+      hasMore: false,
+      entries: [
+        {
+          id: 'event-1',
+          data: {
+            id: 'event-1', seq: 1, sender: 'user', event: 'message', timestamp, sessionId: null,
+            raw: { type: 'user', message: '我家住在翻斗花园' },
+          },
+        },
+        {
+          id: 'event-2',
+          data: {
+            id: 'event-2', seq: 2, sender: 'assistant', event: 'message', timestamp: timestamp + 1, sessionId: null,
+            raw: { type: 'assistant', message: { content: [{ type: 'text', text: '已经收到，会即时显示在这里。' }] } },
+          },
+        },
+        {
+          id: 'event-3',
+          data: {
+            id: 'event-3', seq: 3, sender: 'assistant', event: 'message', timestamp: timestamp + 2, sessionId: null,
+            raw: { type: 'result' },
+          },
+        },
+      ],
+    })
+    window.location.hash = '#/elder'
+    render(<App />)
+
+    const input = await screen.findByLabelText('告诉安序智护您的需要')
+    fireEvent.change(input, { target: { value: '我家住在翻斗花园' } })
+    fireEvent.click(screen.getByRole('button', { name: '发送' }))
+
+    expect(await screen.findByText('已经收到，会即时显示在这里。')).toBeInTheDocument()
+    expect(screen.queryByText('正在思考…')).not.toBeInTheDocument()
+    expect(openhexMock.interrupt).toHaveBeenCalledTimes(1)
+    expect(input).toBeEnabled()
   })
 
   it('completes the shared staff workflow and exposes the resolved state', async () => {

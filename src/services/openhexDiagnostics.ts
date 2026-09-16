@@ -115,6 +115,7 @@ const phaseForUrl = (url: string, method: string): OpenhexDiagnosticPhase | null
 export const createOpenhexDiagnosticFetch = (
   request: typeof fetch = globalThis.fetch,
   now: () => number = Date.now,
+  onConversationId?: (conversationId: string) => void,
 ): typeof fetch => async (input, init) => {
   const url = typeof input === 'string'
     ? input
@@ -129,6 +130,14 @@ export const createOpenhexDiagnosticFetch = (
 
   try {
     const response = await request(input, init)
+    if (phase === 'send' && response.ok && onConversationId) {
+      void response.clone().json().then((payload: unknown) => {
+        const conversationId = (payload as { conversationId?: unknown } | null)?.conversationId
+        if (typeof conversationId === 'string' && conversationId) onConversationId(conversationId)
+      }).catch(() => {
+        // Conversation capture is a recovery aid and must never break sending.
+      })
+    }
     if (phase) {
       recordOpenhexDiagnostic({
         phase,
