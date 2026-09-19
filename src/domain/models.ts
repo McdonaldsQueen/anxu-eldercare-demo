@@ -24,6 +24,69 @@ export type ServiceType =
 
 export type ItemType = 'GENERAL' | 'MEDICINE' | null
 
+export type FamilyRequestType = 'CONTACT_CHECK' | 'ITEM_HANDOVER'
+
+export type ItemCategory =
+  | 'FOOD'
+  | 'CLOTHING'
+  | 'DAILY_NECESSITY'
+  | 'DOCUMENT'
+  | 'MEDICATION'
+  | 'OTHER'
+
+export type DeliveryMethod = 'FAMILY_DROP_OFF' | 'COURIER' | 'STAFF_PICKUP' | 'OTHER'
+
+export interface Institution {
+  institutionId: string
+  name: string
+}
+
+export type ElderProfileStatus = 'IN_RESIDENCE' | 'DISCHARGED'
+
+export interface ElderProfile {
+  elderId: string
+  institutionId: string
+  name: string
+  age: number
+  room: string
+  status: ElderProfileStatus
+}
+
+export interface FamilyProfile {
+  familyUserId: string
+  name: string
+  phone: string
+}
+
+export interface StaffProfile {
+  staffId: string
+  institutionId: string
+  name: string
+}
+
+export type FamilyRelationship = 'DAUGHTER' | 'SON' | 'SPOUSE' | 'OTHER'
+export type FamilyContactRole = 'PRIMARY_CONTACT' | 'EMERGENCY_CONTACT' | 'FAMILY_MEMBER'
+export type ElderFamilyRelationStatus = 'PENDING' | 'VERIFIED' | 'REVOKED'
+
+export interface ElderFamilyRelation {
+  relationId: string
+  elderId: string
+  familyUserId: string
+  relationship: FamilyRelationship
+  contactRole: FamilyContactRole
+  status: ElderFamilyRelationStatus
+  createdAt: string
+  verifiedAt: string | null
+}
+
+export interface FamilyInvitationInput {
+  elderId: string
+  familyName: string
+  phone: string
+  relationship: FamilyRelationship
+  contactRole: FamilyContactRole
+}
+
 export type RiskEventType =
   | 'FALL'
   | 'BREATHING_DIFFICULTY'
@@ -85,6 +148,8 @@ export interface CareCase {
   subjectElderId: string
   requesterId: string
   requesterRole?: Extract<Role, 'ELDER' | 'FAMILY'>
+  relationId?: string | null
+  institutionId?: string | null
   caseType: CaseType
   serviceType: ServiceType
   title?: string
@@ -113,6 +178,19 @@ export interface CareCase {
   itemArrivalStatus?: 'ARRIVED' | 'NOT_ARRIVED' | 'UNKNOWN' | null
   providedDosageInstructions?: string | null
   specialInstruction?: string | null
+  familyRequestType?: FamilyRequestType | null
+  requestType?: 'UNREACHABLE_ELDER' | 'ITEM_HANDOVER' | null
+  requesterRelation?: string | null
+  lastContactTime?: string | null
+  contactAttempts?: number | null
+  additionalNote?: string | null
+  itemCategory?: ItemCategory | null
+  quantity?: number | null
+  deliveryMethod?: DeliveryMethod | null
+  expectedDeliveryTime?: string | null
+  medicationPackageNote?: string | null
+  resolutionResult?: string | null
+  resolvedAt?: string | null
   evaluationDecision?: EvaluationDecision | null
   evaluationReason?: string | null
   assignedStaff: string | null
@@ -164,6 +242,28 @@ export interface FamilyRequestDraft {
   providedDosageInstructions: string | null
   specialInstruction: string | null
   requestSummary: string | null
+}
+
+export interface ContactCheckRequestInput {
+  elderId: string
+  requesterId: string
+  relationId: string
+  lastContactTime: string
+  contactAttempts: number
+  additionalNote: string
+}
+
+export interface ItemHandoverRequestInput {
+  elderId: string
+  requesterId: string
+  relationId: string
+  itemName: string
+  itemCategory: ItemCategory
+  quantity: number
+  deliveryMethod: DeliveryMethod
+  expectedDeliveryTime: string
+  specialInstruction: string
+  medicationPackageNote?: string
 }
 
 export type ConversationIntent =

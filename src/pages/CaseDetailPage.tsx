@@ -25,6 +25,16 @@ const SAFETY_STATUS_LABELS: Record<CareCaseStatus, string> = {
   COMPLETED: '事件处理已完成',
 }
 
+const FAMILY_STATUS_LABELS: Record<CareCaseStatus, string> = {
+  WAITING: '等待工作人员接单',
+  ACCEPTED: '工作人员已接单',
+  DECLINED: '评估后暂不承接',
+  WAITING_FOR_REVIEW: '等待工作人员确认',
+  CONFIRMED: '工作人员已确认',
+  IN_PROGRESS: '工作人员正在处理',
+  COMPLETED: '处理结果已反馈',
+}
+
 const progressSteps: Array<{ status: CareCaseStatus; label: string }> = [
   { status: 'WAITING', label: '等待工作人员接单' },
   { status: 'ACCEPTED', label: '工作人员已接单' },
@@ -39,6 +49,13 @@ const safetyProgressSteps: Array<{ status: CareCaseStatus; label: string }> = [
   { status: 'COMPLETED', label: '事件处理完成' },
 ]
 
+const familyProgressSteps: Array<{ status: CareCaseStatus; label: string }> = [
+  { status: 'WAITING', label: '等待工作人员接单' },
+  { status: 'ACCEPTED', label: '工作人员已接单' },
+  { status: 'IN_PROGRESS', label: '工作人员处理中' },
+  { status: 'COMPLETED', label: '结果已反馈家属' },
+]
+
 const formatTime = (value: string) =>
   new Intl.DateTimeFormat('zh-CN', {
     hour: '2-digit',
@@ -51,31 +68,44 @@ export function CaseDetailPage({ role }: { role: Extract<Role, 'ELDER' | 'FAMILY
   const careCase = useDemoStore((state) =>
     caseId ? state.cases[caseId] : undefined,
   )
-  const backHref = role === 'ELDER' ? '/elder' : '/family'
+  const elderProfiles = useDemoStore((state) => state.elderProfiles)
+  const activeFamilyUserId = useDemoStore((state) => state.activeFamilyUserId)
+  const relations = useDemoStore((state) => state.elderFamilyRelations)
+  const defaultBackHref = role === 'ELDER' ? '/elder' : '/family'
 
   if (!careCase) {
     return (
       <AppShell>
         <div className="page-content page-content--narrow detail-empty">
           <h1>没有找到这件事</h1>
-          <Link to={backHref}>返回首页</Link>
+          <Link to={defaultBackHref}>返回首页</Link>
         </div>
       </AppShell>
     )
   }
 
+  const elder = elderProfiles[careCase.subjectElderId]
+  const familyCanAccess = role !== 'FAMILY' || Object.values(relations).some((relation) =>
+    relation.elderId === careCase.subjectElderId && relation.familyUserId === activeFamilyUserId && relation.status === 'VERIFIED')
+  const backHref = role === 'ELDER' ? '/elder' : `/family/elders/${careCase.subjectElderId}`
+
+  if (!familyCanAccess) {
+    return <AppShell pageClassName="family-theme"><div className="page-content detail-empty"><h1>无权查看该老人档案</h1><Link to="/family">返回我的家人</Link></div></AppShell>
+  }
+
   const isSafety = careCase.caseType === 'SAFETY'
+  const isFamilyRequest = careCase.caseType === 'FAMILY_REQUEST'
   const displayedRiskType = careCase.finalRiskType ?? careCase.eventType
   const riskDefinition = displayedRiskType ? RISK_CATALOG[displayedRiskType] : null
   const [appointmentDate = '', appointmentClock = ''] = careCase.appointmentTime?.split(' ') ?? []
   const escortPeriod = Number(appointmentClock.split(':')[0]) >= 12 ? '下午' : '上午'
   const audience = role === 'ELDER'
     ? isSafety ? '您的安全事件进度' : '您的服务进度'
-    : isSafety ? '妈妈的安全事件进度' : '妈妈的服务进度'
-  const displayedSteps = isSafety ? safetyProgressSteps : progressSteps
+    : isSafety ? `${elder?.name ?? '老人'}的安全事件进度` : isFamilyRequest ? '家属工单进度' : `${elder?.name ?? '老人'}的服务进度`
+  const displayedSteps = isSafety ? safetyProgressSteps : isFamilyRequest ? familyProgressSteps : progressSteps
   const statusLabel = isSafety
     ? SAFETY_STATUS_LABELS[careCase.status]
-    : SERVICE_STATUS_LABELS[careCase.status]
+    : isFamilyRequest ? FAMILY_STATUS_LABELS[careCase.status] : SERVICE_STATUS_LABELS[careCase.status]
 
   const currentIndex = displayedSteps.findIndex(
     (step) => step.status === careCase.status,
@@ -84,13 +114,13 @@ export function CaseDetailPage({ role }: { role: Extract<Role, 'ELDER' | 'FAMILY
   return (
     <AppShell pageClassName={role === 'ELDER' ? 'elder-theme' : 'family-theme'}>
       <div className="page-content page-content--narrow case-detail-page">
-        <Link className="back-link" to={backHref}>← 返回{role === 'ELDER' ? '首页' : '妈妈今天'}</Link>
+        <Link className="back-link" to={backHref}>← 返回{role === 'ELDER' ? '首页' : `${elder?.name ?? '老人'}主页`}</Link>
         <header className="detail-hero">
           <span className={`detail-hero__icon ${isSafety ? 'detail-hero__icon--risk' : ''}`}>{isSafety ? <AlertIcon /> : <ClipboardIcon />}</span>
           <div>
             <p className="eyebrow">{audience}</p>
             <h1>{isSafety ? riskDefinition?.caseTitle : careCase.serviceType === 'MEDICAL_ESCORT' ? `${appointmentDate}${escortPeriod}陪诊` : careCase.title ?? '服务需求'}</h1>
-            <p>{isSafety ? `王阿姨 · ${careCase.selfHandling === 'UNABLE' ? '当前无法自行起身' : riskDefinition?.reportSummary}` : `王阿姨 · ${careCase.requestSummary ?? [careCase.hospital, careCase.appointmentTime].filter(Boolean).join(' · ')}`}</p>
+            <p>{isSafety ? `${elder?.name ?? careCase.subjectElderId} · ${careCase.selfHandling === 'UNABLE' ? '当前无法自行起身' : riskDefinition?.reportSummary}` : `${elder?.name ?? careCase.subjectElderId} · ${careCase.requestSummary ?? [careCase.hospital, careCase.appointmentTime].filter(Boolean).join(' · ')}`}</p>
           </div>
           <span className={`detail-status detail-status--${careCase.status.toLowerCase()} ${isSafety ? 'detail-status--risk' : ''}`}>
             {statusLabel}
@@ -99,7 +129,7 @@ export function CaseDetailPage({ role }: { role: Extract<Role, 'ELDER' | 'FAMILY
 
         {careCase.assignedStaff && (
           <section className={`assignment-banner ${isSafety ? 'assignment-banner--risk' : ''}`}>
-            <span className="staff-avatar staff-avatar--small">李</span>
+            <span className="staff-avatar staff-avatar--small">陈</span>
             <div>
               <strong>{isSafety ? `${careCase.assignedStaff}已介入处理` : `${careCase.assignedStaff}已接单`}</strong>
               <p>{isSafety ? '服务中心正在推进事件处理' : `预计${careCase.arrivalTime}上门`}</p>
@@ -122,13 +152,29 @@ export function CaseDetailPage({ role }: { role: Extract<Role, 'ELDER' | 'FAMILY
             <small>补充内容会进入同一个安全事件，不会自动改变 P0 等级。</small>
           </section>
         )}
+        {isFamilyRequest && careCase.familyRequestType === 'CONTACT_CHECK' && (
+          <section className="safety-supplement">
+            <strong>联系确认信息</strong>
+            <p>最后联系时间：{careCase.lastContactTime}；已尝试 {careCase.contactAttempts} 次</p>
+            {careCase.additionalNote && <p>补充说明：{careCase.additionalNote}</p>}
+            <small>P0 为当前业务系统处理优先级，不等于医学急症诊断。</small>
+          </section>
+        )}
         {careCase.itemType && (
           <section className="safety-supplement">
             <strong>物品转交信息</strong>
-            <p>{careCase.itemType === 'MEDICINE' ? '药品' : '普通物品'}：{careCase.itemName ?? '未填写'}</p>
-            {careCase.providedDosageInstructions && <p>家属提供的用法信息：{careCase.providedDosageInstructions}</p>}
+            <p>{careCase.itemCategory ?? (careCase.itemType === 'MEDICINE' ? 'MEDICATION' : 'OTHER')}：{careCase.itemName ?? '未填写'} × {careCase.quantity ?? 1}</p>
+            <p>交付方式：{careCase.deliveryMethod ?? '未填写'}；预计送达：{careCase.expectedDeliveryTime ?? '未填写'}</p>
+            {careCase.medicationPackageNote && <p>药品包装备注：{careCase.medicationPackageNote}</p>}
             {careCase.specialInstruction && <p>特殊要求：{careCase.specialInstruction}</p>}
-            <small>仅记录家属原话，不构成剂量、用法或医疗建议。</small>
+            {careCase.itemCategory === 'MEDICATION' && <small>系统未生成剂量、用法、服药频率或医疗建议。</small>}
+          </section>
+        )}
+        {careCase.resolutionResult && (
+          <section className="safety-supplement">
+            <strong>工作人员处理结果</strong>
+            <p>{careCase.resolutionResult}</p>
+            <small>结果已同步给家属。</small>
           </section>
         )}
         {careCase.status === 'DECLINED' && (
@@ -150,7 +196,7 @@ export function CaseDetailPage({ role }: { role: Extract<Role, 'ELDER' | 'FAMILY
             })}
           </div>
           {careCase.status === 'COMPLETED' && (
-            <div className="resolved-banner"><CheckIcon /><div><strong>{isSafety ? '事件处理已完成' : '服务已完成'}</strong><span>CASE RESOLVED</span></div></div>
+            <div className="resolved-banner"><CheckIcon /><div><strong>{isSafety ? '事件处理已完成' : isFamilyRequest ? '家属工单已完成' : '服务已完成'}</strong><span>CASE RESOLVED</span></div></div>
           )}
         </section>
 

@@ -2,6 +2,8 @@ import { AppShell } from '../components/layout/AppShell'
 import { useShallow } from 'zustand/react/shallow'
 import { CaseCard } from '../components/cases/CaseCard'
 import { AlertIcon, ClipboardIcon } from '../components/ui/Icons'
+import { Link } from 'react-router-dom'
+import { CONTACT_ROLE_LABELS, RELATIONSHIP_LABELS } from '../domain/identity'
 import { selectActiveCases, selectCompletedCases, selectWorkload, useDemoStore } from '../store/demoStore'
 
 export function StaffWorkbenchPage() {
@@ -9,6 +11,9 @@ export function StaffWorkbenchPage() {
   const activeCases = useDemoStore(useShallow(selectActiveCases))
   const completedCases = useDemoStore(useShallow(selectCompletedCases))
   const moveServiceCase = useDemoStore((state) => state.moveServiceCase)
+  const elderProfiles = useDemoStore((state) => state.elderProfiles)
+  const familyProfiles = useDemoStore((state) => state.familyProfiles)
+  const relations = useDemoStore((state) => state.elderFamilyRelations)
   const riskCases = activeCases.filter((careCase) => careCase.caseType === 'SAFETY')
   const unreviewedRiskCases = riskCases.filter((careCase) => careCase.status === 'WAITING_FOR_REVIEW')
   const confirmedRiskCases = riskCases.filter((careCase) => careCase.status !== 'WAITING_FOR_REVIEW')
@@ -26,8 +31,8 @@ export function StaffWorkbenchPage() {
     <AppShell pageClassName="staff-theme">
       <div className="staff-home page-content">
         <header className="dashboard-heading dashboard-heading--staff">
-          <div><p className="eyebrow">李师傅，上午好</p><h1>服务工作台</h1><p>需要您处理的服务与风险事件会集中出现在这里。</p></div>
-          <div className="staff-avatar">李</div>
+          <div><p className="eyebrow">陈静，上午好</p><h1>服务工作台</h1><p>需要您处理的服务与风险事件会集中出现在这里。</p><Link className="staff-records-link" to="/staff/elders">老人档案</Link></div>
+          <div className="staff-avatar">陈</div>
         </header>
 
         {unreviewedRiskCases.length > 0 && (
@@ -85,9 +90,21 @@ export function StaffWorkbenchPage() {
           <section className="panel task-panel task-panel--secondary">
             <div className="section-title-row"><div><p className="eyebrow">家属需求</p><h2>Family Request</h2></div><span className="count-chip">{familyCases.length} 件</span></div>
             <div className="case-list">{familyCases.map((careCase) => (
-              <CaseCard key={careCase.caseId} careCase={careCase} detailHref={`/staff/tasks/${careCase.caseId}`}
-                actionLabel={careCase.status === 'WAITING' ? '接单' : undefined}
-                onAction={careCase.status === 'WAITING' ? () => moveServiceCase(careCase.caseId, 'ACCEPTED') : undefined} />
+              <div className="family-work-item" key={careCase.caseId}>
+                {(() => {
+                  const elder = elderProfiles[careCase.subjectElderId]
+                  const family = familyProfiles[careCase.requesterId]
+                  const relation = careCase.relationId ? relations[careCase.relationId] : undefined
+                  return <div className="family-work-context">
+                    <span>老人：<strong>{elder?.name ?? careCase.subjectElderId}</strong> · {careCase.subjectElderId}{elder ? ` · ${elder.room}房` : ''}</span>
+                    <span>请求人：<strong>{family?.name ?? careCase.requesterId}</strong>{relation ? ` · ${RELATIONSHIP_LABELS[relation.relationship]} · ${CONTACT_ROLE_LABELS[relation.contactRole]}` : ''}</span>
+                    <span>工作人员：<strong>陈静</strong></span>
+                  </div>
+                })()}
+                <CaseCard careCase={careCase} detailHref={`/staff/tasks/${careCase.caseId}`}
+                  actionLabel={careCase.status === 'WAITING' ? '接单' : undefined}
+                  onAction={careCase.status === 'WAITING' ? () => moveServiceCase(careCase.caseId, 'ACCEPTED') : undefined} />
+              </div>
             ))}</div>
           </section>
         )}

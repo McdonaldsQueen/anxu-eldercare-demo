@@ -3,6 +3,27 @@ import { decideElderInput } from '../domain/mockDecisionEngine'
 import { createInitialConversationState } from '../data/mockData'
 import { createDemoStore, selectActiveCases } from './demoStore'
 
+const contactRequest = {
+  elderId: 'E001',
+  requesterId: 'F001',
+  relationId: 'REL-001',
+  lastContactTime: '2026-09-16T09:00',
+  contactAttempts: 3,
+  additionalNote: '平时上午会接电话',
+}
+
+const itemRequest = {
+  elderId: 'E001',
+  requesterId: 'F001',
+  relationId: 'REL-001',
+  itemName: '秋季外套',
+  itemCategory: 'CLOTHING' as const,
+  quantity: 1,
+  deliveryMethod: 'FAMILY_DROP_OFF' as const,
+  expectedDeliveryTime: '2026-09-17T14:00',
+  specialInstruction: '请当面交接',
+}
+
 describe('Phase 4 business convergence', () => {
   beforeEach(() => localStorage.clear())
 
@@ -120,68 +141,87 @@ describe('Phase 4 business convergence', () => {
 
   it('creates FAMILY_REQUEST when family cannot contact the bound elder', () => {
     const store = createDemoStore('p4-family-contact')
-    store.getState().submitFamilyMessage('我今天一直联系不上我妈')
+    store.getState().createFamilyContactRequest(contactRequest)
     expect(store.getState().cases['CASE-001']).toMatchObject({
       caseType: 'FAMILY_REQUEST',
+      familyRequestType: 'CONTACT_CHECK',
       serviceType: 'CONTACT_CHECK',
       subjectElderId: 'E001',
-    })
-  })
-
-  it('uses Safety Override for contact failure plus an explicit risk signal', () => {
-    const store = createDemoStore('p4-family-risk')
-    store.getState().submitFamilyMessage('我爸一直联系不上，而且他今天早上说自己头晕')
-    expect(store.getState().cases['CASE-002']).toMatchObject({
-      caseType: 'SAFETY',
-      status: 'WAITING_FOR_REVIEW',
-      requesterRole: 'FAMILY',
+      requesterId: 'F001',
+      requesterRelation: '女儿',
+      lastContactTime: '2026-09-16T09:00',
+      contactAttempts: 3,
+      additionalNote: '平时上午会接电话',
+      priority: 'P0',
     })
   })
 
   it('creates a FAMILY_REQUEST for a complete family item handover', () => {
     const store = createDemoStore('p4-family-item')
-    store.getState().submitFamilyMessage('我给妈妈买了衣服，已经送到养老中心，麻烦送给她')
+    store.getState().createFamilyItemRequest(itemRequest)
     expect(store.getState().cases['CASE-001']).toMatchObject({
       caseType: 'FAMILY_REQUEST',
+      familyRequestType: 'ITEM_HANDOVER',
       serviceType: 'FAMILY_ITEM_HANDOVER',
       itemType: 'GENERAL',
-      itemName: '衣服',
-      itemArrivalStatus: 'ARRIVED',
+      itemName: '秋季外套',
+      itemCategory: 'CLOTHING',
+      quantity: 1,
+      deliveryMethod: 'FAMILY_DROP_OFF',
+      expectedDeliveryTime: '2026-09-17T14:00',
+      priority: 'P1',
     })
   })
 
-  it('keeps ordinary delivery instructions on FAMILY_REQUEST instead of treating them as medication service', () => {
+  it('never infers medication from an ordinary item name or note', () => {
     const store = createDemoStore('p4-family-delivery-instruction')
-    store.getState().submitFamilyMessage('我给妈妈买了衣服，已经送到养老中心，请放在床头')
+    store.getState().createFamilyItemRequest({
+      ...itemRequest,
+      itemName: '降压药同款收纳盒',
+      itemCategory: 'OTHER',
+      specialInstruction: '请放在床头',
+    })
     expect(store.getState().cases['CASE-001']).toMatchObject({
       caseType: 'FAMILY_REQUEST',
+      itemType: 'GENERAL',
+      itemCategory: 'OTHER',
       specialInstruction: '请放在床头',
     })
   })
 
-  it('stores only family-provided medicine dosage text and never invents a dosage', () => {
+  it('uses medication fields only after an explicit MEDICATION selection and invents no dosage or usage', () => {
     const store = createDemoStore('p4-medicine-no-dose')
-    store.getState().submitFamilyMessage('我给妈妈送了降压药，已经送到养老中心')
+    store.getState().createFamilyItemRequest({
+      ...itemRequest,
+      itemName: '原包装降压药',
+      itemCategory: 'MEDICATION',
+      medicationPackageNote: '未拆封，外盒贴有姓名',
+      specialInstruction: '',
+    })
     const careCase = store.getState().cases['CASE-001']
-    expect(careCase).toMatchObject({ itemType: 'MEDICINE', itemName: '降压药' })
+    expect(careCase).toMatchObject({
+      itemType: 'MEDICINE',
+      itemCategory: 'MEDICATION',
+      medicationPackageNote: '未拆封，外盒贴有姓名',
+    })
     expect(careCase.providedDosageInstructions).toBeNull()
-  })
-
-  it('records supplied medicine instructions verbatim', () => {
-    const store = createDemoStore('p4-medicine-dose')
-    store.getState().submitFamilyMessage('我给妈妈送了降压药，已经送到养老中心，每天一次')
-    expect(store.getState().cases['CASE-001'].providedDosageInstructions).toBe('每天一次')
   })
 
   it('routes special medication assistance to Evaluation while preserving specialInstruction', () => {
     const store = createDemoStore('p4-medicine-eval')
-    store.getState().submitFamilyMessage('我给妈妈送了降压药，已经送到养老中心，每天晚上提醒妈妈吃药')
+    store.getState().createFamilyItemRequest({
+      ...itemRequest,
+      itemName: '降压药',
+      itemCategory: 'MEDICATION',
+      specialInstruction: '请工作人员按时给老人喂药',
+    })
     expect(store.getState().cases['CASE-001']).toMatchObject({
       caseType: 'EVALUATION',
       itemType: 'MEDICINE',
-      specialInstruction: '提醒妈妈吃药',
+      specialInstruction: '请工作人员按时给老人喂药',
       evaluationDecision: 'PENDING',
     })
+    expect(store.getState().cases['CASE-001'].providedDosageInstructions).toBeNull()
   })
 
   it('creates an EVALUATION Case for an undefined service without auto-declining it', () => {
@@ -212,7 +252,7 @@ describe('Phase 4 business convergence', () => {
   it('orders the shared staff queue by review safety, confirmed safety, service, family, evaluation', () => {
     const store = createDemoStore('p4-sort')
     store.getState().submitElderMessage('我想预约按摩服务')
-    store.getState().submitFamilyMessage('我今天一直联系不上我妈')
+    store.getState().createFamilyContactRequest(contactRequest)
     store.getState().submitElderMessage('我想洗澡，需要人帮一下')
     store.getState().submitElderMessage('我摔倒了')
     const orderedTypes = selectActiveCases(store.getState()).map((careCase) => careCase.caseType)
@@ -221,12 +261,14 @@ describe('Phase 4 business convergence', () => {
 
   it('syncs one shared family request through staff completion to the family view state', () => {
     const store = createDemoStore('p4-shared-sync')
-    store.getState().submitFamilyMessage('我今天一直联系不上我妈')
+    store.getState().createFamilyContactRequest(contactRequest)
     store.getState().setActiveRole('STAFF')
     expect(store.getState().moveServiceCase('CASE-001', 'ACCEPTED')).toBe(true)
     expect(store.getState().moveServiceCase('CASE-001', 'IN_PROGRESS')).toBe(true)
-    expect(store.getState().moveServiceCase('CASE-001', 'COMPLETED')).toBe(true)
+    expect(store.getState().moveServiceCase('CASE-001', 'COMPLETED')).toBe(false)
+    expect(store.getState().completeFamilyRequest('CASE-001', '已上门确认，老人状态平稳，并已协助回电。')).toBe(true)
     expect(store.getState().cases['CASE-001'].status).toBe('COMPLETED')
-    expect(store.getState().cases['CASE-001'].timeline.at(-1)?.label).toContain('同步结果')
+    expect(store.getState().cases['CASE-001'].resolutionResult).toBe('已上门确认，老人状态平稳，并已协助回电。')
+    expect(store.getState().cases['CASE-001'].timeline.at(-1)?.label).toContain('已同步家属')
   })
 })

@@ -25,7 +25,12 @@ export function AppShell({ children, pageClassName = '' }: AppShellProps) {
       <main className="app-main" id="main-content">{children}</main>
       <DemoToolbar />
       <footer className="app-footer">
+<<<<<<< HEAD
+        <span>产品概念演示 · 老人端对话由 OpenHex Agent 提供，身份关系与 Case 信息为 Mock Data</span>
+        <ResetDemo />
+=======
         <span>产品概念演示 · OpenHex 提供真实对话 · Case 与服务流程使用 Mock Data</span>
+>>>>>>> origin/main
       </footer>
     </div>
   )

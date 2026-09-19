@@ -122,7 +122,7 @@ describe('Phase 1 and Phase 2 routes and interactions', () => {
     fireEvent.change(screen.getByLabelText('切换体验身份'), {
       target: { value: 'FAMILY' },
     })
-    expect(await screen.findByRole('heading', { name: '妈妈今天' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: '我的家人' })).toBeInTheDocument()
     expect(useDemoStore.getState().activeRole).toBe('FAMILY')
 
     fireEvent.change(screen.getByLabelText('切换体验身份'), {
@@ -324,7 +324,7 @@ describe('Phase 1 and Phase 2 routes and interactions', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: '接单' }))
     expect(useDemoStore.getState().cases['CASE-001'].status).toBe('ACCEPTED')
-    expect(screen.getByText(/李师傅已接单/)).toBeInTheDocument()
+    expect(screen.getByText(/陈静已接单/)).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('link', { name: /查看详情/ }))
     fireEvent.click(await screen.findByRole('button', { name: '开始服务' }))
@@ -336,8 +336,108 @@ describe('Phase 1 and Phase 2 routes and interactions', () => {
     fireEvent.change(screen.getByLabelText('切换体验身份'), {
       target: { value: 'FAMILY' },
     })
+    fireEvent.click(await screen.findByRole('button', { name: '进入' }))
     expect(await screen.findByText('服务已完成')).toBeInTheDocument()
     expect(screen.getByText(/明日下午陪诊/)).toBeInTheDocument()
+  })
+
+  it('shows the staff elder archive with both verified family relationships', async () => {
+    window.location.hash = '#/staff/elders'
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: '老人档案' })).toBeInTheDocument()
+    const archive = screen.getByLabelText('老人档案列表')
+    expect(archive).toHaveTextContent('王秀兰')
+    expect(archive).toHaveTextContent('82岁')
+    expect(archive).toHaveTextContent('302房')
+    expect(archive).toHaveTextContent('在院')
+    expect(archive).toHaveTextContent('已绑定家属2')
+  })
+
+  it('runs the complete staff invitation to family request golden path', async () => {
+    useDemoStore.getState().resetGoldenPathDemo()
+    window.location.hash = '#/staff/elders'
+    render(<App />)
+
+    fireEvent.click(await screen.findByRole('link', { name: '管理家属' }))
+    expect(await screen.findByRole('heading', { name: '王秀兰' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '发送绑定邀请' }))
+    const pendingRelation = Object.values(useDemoStore.getState().elderFamilyRelations)
+      .find((relation) => relation.familyUserId === 'F001')
+    expect(pendingRelation).toMatchObject({ elderId: 'E001', status: 'PENDING' })
+
+    fireEvent.change(screen.getByLabelText('切换体验身份'), { target: { value: 'FAMILY' } })
+    expect(await screen.findByRole('heading', { name: '待确认绑定' })).toBeInTheDocument()
+    expect(screen.getByText('安序养老服务中心邀请您绑定老人档案')).toBeInTheDocument()
+    expect(screen.getByText('母亲')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '确认绑定' }))
+    expect(useDemoStore.getState().elderFamilyRelations[pendingRelation!.relationId]).toMatchObject({ status: 'VERIFIED' })
+
+    fireEvent.click(await screen.findByRole('button', { name: '进入' }))
+    expect(await screen.findByRole('heading', { name: '王秀兰今天' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /联系不上老人/ }))
+    fireEvent.change(screen.getByLabelText('最后一次联系时间'), { target: { value: '2026-09-16T09:00' } })
+    fireEvent.change(screen.getByLabelText('已尝试联系次数'), { target: { value: '3' } })
+    fireEvent.click(screen.getByRole('button', { name: '提交联系确认' }))
+    expect(useDemoStore.getState().cases['CASE-001']).toMatchObject({
+      requestType: 'UNREACHABLE_ELDER', subjectElderId: 'E001', requesterId: 'F001',
+      relationId: pendingRelation!.relationId, institutionId: 'I001', priority: 'P0',
+    })
+
+    fireEvent.change(screen.getByLabelText('切换体验身份'), { target: { value: 'STAFF' } })
+    const familyRequestSection = await screen.findByRole('heading', { name: 'Family Request' })
+    expect(familyRequestSection.closest('section')).toHaveTextContent('王秀兰')
+    expect(familyRequestSection.closest('section')).toHaveTextContent('李晓雯')
+    expect(familyRequestSection.closest('section')).toHaveTextContent('女儿')
+    expect(familyRequestSection.closest('section')).toHaveTextContent('主要联系人')
+    fireEvent.click(screen.getByRole('button', { name: '接单' }))
+    fireEvent.click(screen.getByRole('link', { name: /查看详情/ }))
+    fireEvent.click(await screen.findByRole('button', { name: '开始服务' }))
+    const result = '已到房间确认王秀兰目前情况正常，并已协助老人联系家属。'
+    fireEvent.change(screen.getByLabelText('处理结果'), { target: { value: result } })
+    fireEvent.click(screen.getByRole('button', { name: '完成并反馈家属' }))
+    expect(useDemoStore.getState().cases['CASE-001']).toMatchObject({ status: 'COMPLETED', resolutionResult: result })
+
+    fireEvent.change(screen.getByLabelText('切换体验身份'), { target: { value: 'FAMILY' } })
+    fireEvent.click(await screen.findByRole('button', { name: '进入' }))
+    fireEvent.click(await screen.findByRole('link', { name: /查看详情/ }))
+    expect(await screen.findByText(result)).toBeInTheDocument()
+    expect(screen.getByText('CASE RESOLVED')).toBeInTheDocument()
+  })
+
+  it('runs a family contact request through staff result feedback', async () => {
+    window.location.hash = '#/family'
+    render(<App />)
+
+    fireEvent.click(await screen.findByRole('button', { name: '进入' }))
+    fireEvent.click(await screen.findByRole('button', { name: /联系不上老人/ }))
+    fireEvent.change(screen.getByLabelText('最后一次联系时间'), { target: { value: '2026-09-16T09:00' } })
+    fireEvent.change(screen.getByLabelText('已尝试联系次数'), { target: { value: '3' } })
+    fireEvent.click(screen.getByRole('button', { name: '提交联系确认' }))
+    expect(useDemoStore.getState().cases['CASE-001']).toMatchObject({
+      caseType: 'FAMILY_REQUEST',
+      priority: 'P0',
+      status: 'WAITING',
+    })
+
+    fireEvent.change(screen.getByLabelText('切换体验身份'), { target: { value: 'STAFF' } })
+    expect(await screen.findByRole('heading', { name: 'Family Request' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '接单' }))
+    fireEvent.click(screen.getByRole('link', { name: /查看详情/ }))
+    fireEvent.click(await screen.findByRole('button', { name: '开始服务' }))
+    fireEvent.change(screen.getByLabelText('处理结果'), { target: { value: '已上门确认，老人状态平稳，并已协助回电。' } })
+    fireEvent.click(screen.getByRole('button', { name: '完成并反馈家属' }))
+    expect(useDemoStore.getState().cases['CASE-001']).toMatchObject({
+      status: 'COMPLETED',
+      resolutionResult: '已上门确认，老人状态平稳，并已协助回电。',
+    })
+
+    fireEvent.change(screen.getByLabelText('切换体验身份'), { target: { value: 'FAMILY' } })
+    fireEvent.click(await screen.findByRole('button', { name: '进入' }))
+    expect(await screen.findByText('处理结果已反馈')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('link', { name: /查看详情/ }))
+    expect(await screen.findByText('已上门确认，老人状态平稳，并已协助回电。')).toBeInTheDocument()
+    expect(screen.getByText('CASE RESOLVED')).toBeInTheDocument()
   })
 
   it('runs the P0 fall flow through elder, family, and staff views', async () => {
@@ -362,7 +462,8 @@ describe('Phase 1 and Phase 2 routes and interactions', () => {
     fireEvent.change(screen.getByLabelText('切换体验身份'), {
       target: { value: 'FAMILY' },
     })
-    expect(await screen.findByRole('heading', { name: '妈妈刚刚报告发生跌倒' })).toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', { name: '进入' }))
+    expect(await screen.findByRole('heading', { name: '王秀兰刚刚报告发生跌倒' })).toBeInTheDocument()
     expect(screen.getByText('等待工作人员确认')).toBeInTheDocument()
 
     fireEvent.change(screen.getByLabelText('切换体验身份'), {
@@ -378,6 +479,7 @@ describe('Phase 1 and Phase 2 routes and interactions', () => {
     fireEvent.change(screen.getByLabelText('切换体验身份'), {
       target: { value: 'FAMILY' },
     })
+    fireEvent.click(await screen.findByRole('button', { name: '进入' }))
     expect(await screen.findByText('工作人员已介入处理')).toBeInTheDocument()
 
     fireEvent.change(screen.getByLabelText('切换体验身份'), {
