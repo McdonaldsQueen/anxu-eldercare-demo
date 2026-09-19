@@ -23,6 +23,7 @@ import {
 } from '../../services/openhexHistorySync'
 import { getOpenhexToken, resetOpenhexTokenCache } from '../../services/openhexToken'
 import { CARELINK_SYNC_EVENT } from '../../services/carelinkPolicy'
+import { confirmedOpenhexCases, elderFacingAgentText } from '../../services/openhexCaseBridge'
 import { DEMO_RESET_EVENT } from '../../services/demoReset'
 import { useDemoStore } from '../../store/demoStore'
 import { useDemoUiStore } from '../../store/demoUiStore'
@@ -47,6 +48,8 @@ export function ElderConversation() {
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [transportConversationId, setTransportConversationId] = useState<string>()
   const [syncedHistory, setSyncedHistory] = useState<SyncedOpenhexHistory | null>(null)
+  const [externalCaseCandidate, setExternalCaseCandidate] = useState<string | null>(null)
+  const [caseSyncWarning, setCaseSyncWarning] = useState(false)
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
   const threadRef = useRef<HTMLDivElement | null>(null)
   const voiceFailedRef = useRef(false)
@@ -61,6 +64,10 @@ export function ElderConversation() {
   const setOpenhexConversationId = useDemoUiStore((state) => state.setOpenhexConversationId)
   const session = useDemoStore((state) => state.conversationState.elder)
   const submitElderMessage = useDemoStore((state) => state.submitElderMessage)
+  const importOpenhexCase = useDemoStore((state) => state.importOpenhexCase)
+  const latestOpenhexCase = useDemoStore((state) => Object.values(state.cases)
+    .filter((careCase) => careCase.caseSource === 'OPENHEX')
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0])
   const activeServiceCase = useDemoStore((state) =>
     Object.values(state.cases).find(
       (careCase) => ['SERVICE', 'MOBILITY'].includes(careCase.caseType) && careCase.status !== 'COMPLETED',
@@ -85,13 +92,20 @@ export function ElderConversation() {
     idleTimeoutMs,
     persist: 'anxu-eldercare-agent-chat',
     senderName: '王阿姨',
-    onTurnComplete: () => {
+    onTurnComplete: (message) => {
       const startedAt = turnStartedAtRef.current
       recordOpenhexDiagnostic({
         phase: 'complete',
         outcome: 'success',
         durationMs: startedAt ? Date.now() - startedAt : undefined,
       })
+      const caseId = isInternalCarelinkMessage(message.text)
+        ? undefined
+        : message.text.match(/\bCASE-\d{8}-\d{3,}\b/i)?.[0]
+      if (caseId) {
+        for (const input of confirmedOpenhexCases([message])) importOpenhexCase(input)
+        setExternalCaseCandidate(caseId.toUpperCase())
+      }
     },
     onError: (error) => {
       const startedAt = turnStartedAtRef.current
@@ -131,6 +145,8 @@ export function ElderConversation() {
       setTransportConversationId(undefined)
       setOpenhexConversationId(undefined)
       setSyncedHistory(null)
+      setExternalCaseCandidate(null)
+      setCaseSyncWarning(false)
       turnStartedAtRef.current = null
       reconciledTurnStartedAtRef.current = null
       existingAssistantIdsRef.current.clear()
@@ -259,6 +275,44 @@ export function ElderConversation() {
   }, [activeConversationId, chat.isResponding, chatClient, experienceMode])
 
   useEffect(() => {
+    if (experienceMode !== 'OPENHEX') return
+    for (const input of confirmedOpenhexCases(displayedOpenhexMessages)) importOpenhexCase(input)
+  }, [displayedOpenhexMessages, experienceMode, importOpenhexCase])
+
+  useEffect(() => {
+    if (experienceMode !== 'OPENHEX' || !externalCaseCandidate || !activeConversationId) return
+    let stopped = false
+    let timer: number | undefined
+    const resetEpoch = resetEpochRef.current
+    let attempts = 0
+    const reconcileCase = async () => {
+      attempts += 1
+      try {
+        const history = await chatClient.messages(activeConversationId)
+        if (stopped || resetEpoch !== resetEpochRef.current) return
+        const confirmed = confirmedOpenhexCases(foldOpenhexHistory(history.entries)
+          .filter((message) => !isInternalCarelinkMessage(message.text)))
+          .find((careCase) => careCase.caseId === externalCaseCandidate)
+        if (confirmed) {
+          importOpenhexCase(confirmed)
+          setExternalCaseCandidate(null)
+          setCaseSyncWarning(false)
+          return
+        }
+      } catch {
+        // Keep the conversation usable while history becomes available.
+      }
+      if (attempts < 4) timer = window.setTimeout(() => void reconcileCase(), 1_500)
+      else if (!stopped) setCaseSyncWarning(!useDemoStore.getState().cases[externalCaseCandidate])
+    }
+    void reconcileCase()
+    return () => {
+      stopped = true
+      if (timer !== undefined) window.clearTimeout(timer)
+    }
+  }, [activeConversationId, chatClient, experienceMode, externalCaseCandidate, importOpenhexCase])
+
+  useEffect(() => {
     if (chat.status !== 'streaming' || firstEventRecordedRef.current) return
     firstEventRecordedRef.current = true
     recordOpenhexDiagnostic({
@@ -304,6 +358,8 @@ export function ElderConversation() {
     if (chat.isResponding || !agentId) return
 
     setSendError(null)
+    setCaseSyncWarning(false)
+    setExternalCaseCandidate(null)
     turnStartedAtRef.current = Date.now()
     firstEventRecordedRef.current = false
     firstTextRecordedRef.current = false
@@ -432,11 +488,21 @@ export function ElderConversation() {
                 {message.role === 'assistant' && <span className="message-avatar"><SparkIcon /></span>}
                 <div className="message-content">
                   <span>{message.role === 'user' ? '王阿姨' : message.agent?.name || '安序智护'}</span>
-                  <SafeMessageText text={message.text || (message.pending || message.streaming ? '正在思考…' : '')} />
+                  <SafeMessageText text={elderFacingAgentText(message.text) || (message.pending || message.streaming ? '正在思考…' : '')} />
                 </div>
               </div>
             ))}
         </div>
+      )}
+
+      {experienceMode === 'OPENHEX' && latestOpenhexCase && (
+        <div className="conversation-created-case" role="status">
+          <div><span>工单已显示在当前页面</span><strong>{latestOpenhexCase.caseId} · {latestOpenhexCase.title}</strong></div>
+          <Link to={`/elder/cases/${latestOpenhexCase.caseId}`}>查看处理进度 <ArrowIcon /></Link>
+        </div>
+      )}
+      {experienceMode === 'OPENHEX' && caseSyncWarning && (
+        <p className="agent-error" role="alert">Agent 提到了工单号，但 Web 未能确认创建记录。请联系工作人员核对工单，暂勿重复提交。</p>
       )}
 
       {experienceMode === 'OPENHEX' && displayedOpenhexMessages.length === 0 && (

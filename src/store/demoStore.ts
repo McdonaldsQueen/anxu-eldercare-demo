@@ -15,6 +15,7 @@ import { interpretFamilyRequest } from '../domain/familyRequestInterpreter'
 import { initialSensorSnapshot, simulateSensorReading } from '../domain/sensorRules'
 import { decideElderInput } from '../domain/mockDecisionEngine'
 import { OPEN_DESCRIPTION_PROMPT, RISK_CATALOG, RISK_FOLLOW_UP_LABELS } from '../domain/riskCatalog'
+import type { ConfirmedOpenhexCase } from '../services/openhexCaseBridge'
 import type {
   CareCase,
   CareCaseStatus,
@@ -65,6 +66,7 @@ export interface DemoStore extends DemoStateData {
   inviteFamilyRelation: (input: FamilyInvitationInput) => string | null
   confirmFamilyRelation: (relationId: string) => boolean
   saveCase: (careCase: CareCase) => void
+  importOpenhexCase: (input: ConfirmedOpenhexCase) => boolean
   submitElderMessage: (text: string) => void
   createFamilyContactRequest: (input: ContactCheckRequestInput) => string | null
   createFamilyItemRequest: (input: ItemHandoverRequestInput) => string | null
@@ -483,6 +485,52 @@ export const createDemoStore = (storageKey = DEMO_STORAGE_KEY) =>
           return true
         },
         saveCase: (careCase) => set((state) => ({ cases: { ...state.cases, [careCase.caseId]: careCase } })),
+        importOpenhexCase: (input) => {
+          if (!/^CASE-\d{8}-\d{3,}$/.test(input.caseId)) return false
+          const existing = get().cases[input.caseId]
+          if (existing) {
+            if (existing.caseSource !== 'OPENHEX') return false
+            const canUpgrade = existing.status === 'WAITING' && existing.evaluationDecision === 'PENDING' && input.caseType === 'SERVICE'
+            const requestSummary = existing.requestSummary?.includes(existing.caseId) && !input.requestSummary.includes(input.caseId)
+              ? input.requestSummary
+              : existing.requestSummary ?? input.requestSummary
+            const enriched: CareCase = {
+              ...existing,
+              title: canUpgrade ? input.title : existing.title,
+              caseType: canUpgrade ? 'SERVICE' : existing.caseType,
+              serviceType: canUpgrade ? input.serviceType : existing.serviceType,
+              evaluationDecision: canUpgrade ? null : existing.evaluationDecision,
+              requestSummary,
+              agentSummary: requestSummary,
+              hospital: input.hospital ?? existing.hospital,
+              appointmentTime: input.appointmentTime ?? existing.appointmentTime,
+            }
+            if (JSON.stringify(enriched) === JSON.stringify(existing)) return false
+            set((state) => ({ cases: { ...state.cases, [input.caseId]: enriched } }))
+            return true
+          }
+          const now = new Date().toISOString()
+          const careCase: CareCase = {
+            ...baseCase(input.caseId, 'E001', 'ELDER', now),
+            caseSource: 'OPENHEX',
+            institutionId: 'I001',
+            caseType: input.caseType,
+            serviceType: input.serviceType,
+            evaluationDecision: input.caseType === 'EVALUATION' ? 'PENDING' : null,
+            title: input.title,
+            requestSummary: input.requestSummary,
+            agentSummary: input.requestSummary,
+            staffActionSummary: '核对需求，安排服务并反馈老人。',
+            hospital: input.hospital,
+            appointmentTime: input.appointmentTime,
+            timeline: [{
+              id: `${input.caseId}-timeline-1`, occurredAt: now,
+              label: 'Agent 已创建工单，服务中心待接单', actorRole: 'SYSTEM', statusAfter: 'WAITING',
+            }],
+          }
+          set((state) => ({ cases: { ...state.cases, [input.caseId]: careCase } }))
+          return true
+        },
         submitElderMessage: (rawText) => {
           const text = rawText.trim()
           if (!text) return

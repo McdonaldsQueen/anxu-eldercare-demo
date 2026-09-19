@@ -24,7 +24,7 @@
 
 ## 不可破坏的边界
 
-- OpenHex 对话不得直接创建、更新或完成本地 Mock Case。
+- OpenHex 原始消息不得触发本地 Mock 决策引擎或状态迁移；已完成的 Agent 明确建单回执可按外部工单号幂等镜像为 `OPENHEX` 来源 Case，后续状态仍走已有 store action。
 - Phase 4、陪诊、紧急事件、家属请求和工作人员流程不得向 OpenHex 发送消息。
 - Carelink 政策提醒属于真实 OpenHex 对话；其内部触发消息不得进入 Mock Store 或显示在界面中。
 - 只有 OpenHex 接受内部消息后才能确认 Carelink 批次；失败或不确定结果必须先用批次标记查历史，不得盲目重发。

@@ -13,7 +13,7 @@ export function StaffWorkbenchPage() {
   const riskCases = activeCases.filter((careCase) => careCase.caseType === 'SAFETY')
   const unreviewedRiskCases = riskCases.filter((careCase) => careCase.status === 'WAITING_FOR_REVIEW')
   const confirmedRiskCases = riskCases.filter((careCase) => careCase.status !== 'WAITING_FOR_REVIEW')
-  const serviceCases = activeCases.filter((careCase) => ['SERVICE', 'MOBILITY'].includes(careCase.caseType) && careCase.caseSource === 'ELDER_INPUT')
+  const serviceCases = activeCases.filter((careCase) => ['SERVICE', 'MOBILITY'].includes(careCase.caseType) && ['ELDER_INPUT', 'OPENHEX'].includes(careCase.caseSource))
   const familyCases = activeCases.filter((careCase) => careCase.caseSource === 'FAMILY_REQUEST' && careCase.caseType !== 'EVALUATION')
   const evaluationCases = activeCases.filter((careCase) => careCase.caseType === 'EVALUATION')
 

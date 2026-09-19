@@ -59,7 +59,9 @@ describe('Shared Case Store and conversation context', () => {
     store.getState().saveCase(testCase)
     store.getState().setActiveRole('STAFF')
     store.getState().resetDemo()
-    expect(store.getState()).toMatchObject(createInitialState())
+    const expected = createInitialState()
+    expected.sensorSnapshots.E001.updatedAt = store.getState().sensorSnapshots.E001.updatedAt
+    expect(store.getState()).toMatchObject(expected)
   })
 
   it('derives workload numbers entirely from shared cases', () => {
@@ -67,6 +69,40 @@ describe('Shared Case Store and conversation context', () => {
     expect(selectWorkload(store.getState())).toEqual({ pending: 0, inProgress: 0, highRisk: 0 })
     store.getState().saveCase(testCase)
     expect(selectWorkload(store.getState())).toEqual({ pending: 1, inProgress: 0, highRisk: 0 })
+  })
+
+  it('imports an external order idempotently and keeps staff transitions in the shared Case', () => {
+    const store = createDemoStore('openhex-order-test')
+    const input = {
+      caseId: 'CASE-20260919-002', caseType: 'SERVICE' as const, title: '陪诊 / 就医协助', requestSummary: '老人需要陪诊',
+      serviceType: 'MEDICAL_ESCORT' as const, hospital: '朝阳医院', appointmentTime: '明日 14:30',
+    }
+    expect(store.getState().importOpenhexCase(input)).toBe(true)
+    expect(store.getState().importOpenhexCase(input)).toBe(false)
+    expect(selectActiveCases(store.getState()).map((careCase) => careCase.caseId)).toEqual([input.caseId])
+    expect(store.getState().cases[input.caseId]).toMatchObject({ caseSource: 'OPENHEX', status: 'WAITING' })
+    store.getState().setActiveRole('STAFF')
+    expect(store.getState().moveServiceCase(input.caseId, 'ACCEPTED')).toBe(true)
+    expect(createDemoStore('openhex-order-test').getState().cases[input.caseId].status).toBe('ACCEPTED')
+  })
+
+  it('upgrades an underspecified external order when Agent history provides service details', () => {
+    const store = createDemoStore('openhex-enrichment-test')
+    const fallback = {
+      caseId: 'CASE-20260919-003', caseType: 'EVALUATION' as const,
+      title: '待评估需求', requestSummary: '已创建工单 CASE-20260919-003。',
+      serviceType: null, hospital: null, appointmentTime: null,
+    }
+    expect(store.getState().importOpenhexCase(fallback)).toBe(true)
+    expect(store.getState().importOpenhexCase({
+      ...fallback, caseType: 'SERVICE', title: '陪诊 / 就医协助', serviceType: 'MEDICAL_ESCORT',
+      requestSummary: '老人需要陪诊', hospital: '朝阳医院', appointmentTime: '明日 14:30',
+    })).toBe(true)
+    expect(Object.keys(store.getState().cases)).toEqual([fallback.caseId])
+    expect(store.getState().cases[fallback.caseId]).toMatchObject({
+      caseType: 'SERVICE', serviceType: 'MEDICAL_ESCORT', requestSummary: '老人需要陪诊',
+      hospital: '朝阳医院', appointmentTime: '明日 14:30', evaluationDecision: null,
+    })
   })
 
   it('fills fields over two turns and creates the original escort Golden Path', () => {

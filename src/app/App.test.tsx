@@ -295,6 +295,55 @@ describe('Phase 1 and Phase 2 routes and interactions', () => {
     expect(openhexMock.lastOptions).toMatchObject({ idleTimeoutMs: 300_000 })
   })
 
+  it('shows a confirmed OpenHex order in elder, staff, and family Case views', async () => {
+    const caseId = 'CASE-20260919-002'
+    openhexMock.send.mockResolvedValueOnce(`陪诊工单已创建：${caseId}。详情请查看 https://example.feishu.cn/base/abc`)
+    openhexMock.history.mockResolvedValue({ entries: [{
+      id: 'record-1',
+      data: {
+        id: 'record-1', seq: 1, sender: 'assistant', event: 'message', timestamp: Date.now(), sessionId: null,
+        raw: { type: 'assistant', message: { content: [
+          { type: 'tool_use', id: 'tool-1', name: 'createorder-worker', input: {
+            service_type: 'MEDICAL_ESCORT', hospital: '朝阳医院', appointment_time: '明日 14:30', description: '老人需要陪诊',
+          } },
+          { type: 'text', text: `陪诊工单已创建：${caseId}。` },
+        ] } },
+      },
+    }], hasMore: false })
+    window.history.replaceState(null, '', '/elder')
+    render(<App />)
+    fireEvent.change(await screen.findByLabelText('告诉安序智护您的需要'), { target: { value: '明天去朝阳医院需要陪诊' } })
+    fireEvent.click(screen.getByRole('button', { name: '发送' }))
+
+    await waitFor(() => expect(useDemoStore.getState().cases[caseId]).toMatchObject({ status: 'WAITING', caseSource: 'OPENHEX' }))
+    expect(screen.getByText(/工单已显示在当前页面/)).toBeInTheDocument()
+    expect(screen.queryByText(/example.feishu.cn/)).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('link', { name: '返回安序智护概念首页' }))
+    fireEvent.click(screen.getByRole('link', { name: /工作人员端/ }))
+    expect(await screen.findByRole('heading', { name: '服务工作台' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '接单' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '接单' }))
+    expect(useDemoStore.getState().cases[caseId].status).toBe('ACCEPTED')
+
+    fireEvent.click(screen.getByRole('link', { name: '返回安序智护概念首页' }))
+    fireEvent.click(screen.getByRole('link', { name: /家属端/ }))
+    fireEvent.click(await screen.findByRole('button', { name: '进入' }))
+    expect(await screen.findByRole('link', { name: '查看详情' })).toHaveAttribute('href', `/family/cases/${caseId}`)
+  })
+
+  it('shows a Skill order even when OpenHex history does not expose the Skill as a tool call', async () => {
+    openhexMock.send.mockResolvedValueOnce('已为您创建陪诊工单 CASE-20260919-003。')
+    window.history.replaceState(null, '', '/elder')
+    render(<App />)
+    fireEvent.change(await screen.findByLabelText('告诉安序智护您的需要'), { target: { value: '请帮我安排陪诊' } })
+    fireEvent.click(screen.getByRole('button', { name: '发送' }))
+    await waitFor(() => expect(useDemoStore.getState().cases['CASE-20260919-003']).toMatchObject({
+      caseSource: 'OPENHEX', status: 'WAITING', serviceType: 'MEDICAL_ESCORT',
+    }))
+    expect(screen.getByRole('link', { name: /查看处理进度/ })).toHaveAttribute('href', '/elder/cases/CASE-20260919-003')
+  })
+
   it('accepts a valid OpenHex idle timeout override', async () => {
     vi.stubEnv('VITE_OPENHEX_IDLE_TIMEOUT_MS', '420000')
     window.history.replaceState(null, '', '/elder')

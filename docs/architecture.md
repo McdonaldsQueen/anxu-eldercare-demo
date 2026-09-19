@@ -20,6 +20,7 @@ flowchart LR
   Store --> Machine[Case State Machine]
   Store --> Local[(localStorage)]
   AgentUI --> Session[(SDK conversation persist)]
+  AgentUI -->|明确建单回执 + 工单号| Store
   AgentUI --> Diagnostics[(sessionStorage 脱敏诊断)]
 ```
 
@@ -64,6 +65,10 @@ sequenceDiagram
 ### Carelink 政策提醒
 
 浏览器把当前 OpenHex 会话绑定到固定演示档案；Railway 持久化稳定访客引用和会话 ID。Cron 先核验政策，再租赁待推送批次；Vercel 用该访客引用签发短时令牌，查询会话历史标记后发送内部触发消息。前端隐藏触发消息，通过定期、页面聚焦、可见性恢复与手动推送后的快速轮询同步 Agent 回复。详见 [Carelink 接入](./carelink-integration.md)。
+
+### OpenHex 外部工单镜像
+
+`openhexCaseBridge` 从已完成的 Agent 回复中识别明确的建单回执和工单号，并尽可能读取会话历史中的建单工具参数；`demoStore.importOpenhexCase` 按外部工单号幂等地创建或补全 `OPENHEX` 来源的服务 Case。三角色页面仍从同一浏览器的 `demoStore` 读取。此流程不直接运行本地意图引擎，也不调用飞书；不同设备之间尚无共享 Case 后端。
 
 ## 状态与所有权
 

@@ -1,5 +1,5 @@
 export type Role = 'ELDER' | 'FAMILY' | 'STAFF'
-export type CaseSource = 'ELDER_INPUT' | 'FAMILY_REQUEST' | 'WEARABLE_SENSOR'
+export type CaseSource = 'ELDER_INPUT' | 'FAMILY_REQUEST' | 'WEARABLE_SENSOR' | 'OPENHEX'
 export type SensorScenario = 'NORMAL' | 'HIGH_HEART_RATE' | 'LOW_SPO2' | 'HIGH_TEMPERATURE' | 'FALL'
 
 export interface SensorSnapshot {

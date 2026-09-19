@@ -23,6 +23,8 @@ Vercel Function 不代理 Agent 回复，因此 Agent 长任务不受该 Functio
 
 浏览器仍以 SSE 为实时主链路。为处理“服务端已经完成并写入历史，但当前 SSE 没有把最终文本归并进 Hook 状态”的边缘情况，老人端在回复期间通过同一访客会话读取 `messages(conversationId)`。只有历史中同时出现本轮用户消息和后续 `result` 事件时，才会把历史视为权威结果并替换 thinking 占位；这不会重发用户消息。发送响应中的 `conversationId` 只保留在内存中用于本轮对账，诊断记录仍只保存尾部摘要。
 
+Agent 回合完成后，老人端识别明确的建单成功回执和 `CASE-YYYYMMDD-NNN` 工单号，再读取会话历史补全可用的工具参数。`openhexCaseBridge` 只把外部工单镜像到当前浏览器的 Case Store；它不根据老人原始需求自行建单，也不操作飞书。若 Agent 提到工单号而 Web 无法确认建单，页面提示人工核对，避免盲目重提。
+
 官方参考：
 
 - <https://docs.openhex.tech/sdk/chat/>

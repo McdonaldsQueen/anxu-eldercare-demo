@@ -59,7 +59,7 @@ export function CaseCard({
   const [appointmentDate = '', appointmentClock = ''] = careCase.appointmentTime?.split(' ') ?? []
   const escortPeriod = Number(appointmentClock.split(':')[0]) >= 12 ? '下午' : '上午'
   const escortTitle = `${appointmentDate}${escortPeriod}陪诊`
-  const title = careCase.serviceType === 'MEDICAL_ESCORT'
+  const title = careCase.serviceType === 'MEDICAL_ESCORT' && appointmentDate
     ? escortTitle
     : careCase.title ?? '服务需求'
   const eyebrow = isRisk
