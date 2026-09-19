@@ -58,12 +58,7 @@ describe('Shared Case Store and conversation context', () => {
     store.getState().saveCase(testCase)
     store.getState().setActiveRole('STAFF')
     store.getState().resetDemo()
-    expect({
-      cases: store.getState().cases,
-      activeRole: store.getState().activeRole,
-      conversationState: store.getState().conversationState,
-      schemaVersion: store.getState().schemaVersion,
-    }).toEqual(createInitialState())
+    expect(store.getState()).toMatchObject(createInitialState())
   })
 
   it('derives workload numbers entirely from shared cases', () => {

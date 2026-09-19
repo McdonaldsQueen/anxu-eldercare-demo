@@ -23,7 +23,7 @@ export function AppShell({ children, pageClassName = '' }: AppShellProps) {
       </header>
       <main className="app-main">{children}</main>
       <footer className="app-footer">
-        <span>产品概念演示 · 对话由 OpenHex Agent 提供，Case 信息为 Mock Data</span>
+        <span>产品概念演示 · 老人端对话由 OpenHex Agent 提供，身份关系与 Case 信息为 Mock Data</span>
         <ResetDemo />
       </footer>
     </div>

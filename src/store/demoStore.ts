@@ -1,21 +1,37 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
-import { createInitialConversationState, DEMO_SCHEMA_VERSION } from '../data/mockData'
+import {
+  createInitialConversationState,
+  DEMO_ELDER_FAMILY_RELATIONS,
+  DEMO_ELDER_PROFILES,
+  DEMO_FAMILY_PROFILES,
+  DEMO_INSTITUTIONS,
+  DEMO_SCHEMA_VERSION,
+  DEMO_STAFF_PROFILES,
+} from '../data/mockData'
 import { transitionSafetyCase, transitionServiceCase } from '../domain/caseStateMachine'
-import { decideElderInput, decideFamilyInput } from '../domain/mockDecisionEngine'
+import { RELATIONSHIP_LABELS } from '../domain/identity'
+import { decideElderInput } from '../domain/mockDecisionEngine'
 import { OPEN_DESCRIPTION_PROMPT, RISK_CATALOG, RISK_FOLLOW_UP_LABELS } from '../domain/riskCatalog'
 import type {
   CareCase,
   CareCaseStatus,
+  ContactCheckRequestInput,
   ConversationMessage,
   ConversationSession,
   ConversationState,
-  FamilyRequestDraft,
+  ElderFamilyRelation,
+  ElderProfile,
+  FamilyInvitationInput,
+  FamilyProfile,
+  Institution,
+  ItemHandoverRequestInput,
   RiskEventType,
   RiskFollowUpAnswer,
   Role,
   SafetyReviewInput,
   ServiceRequestDraft,
+  StaffProfile,
   TimelineEvent,
 } from '../domain/models'
 
@@ -23,16 +39,30 @@ export const DEMO_STORAGE_KEY = 'anxu-eldercare-demo-state'
 
 export interface DemoStateData {
   cases: Record<string, CareCase>
+  institutions: Record<string, Institution>
+  elderProfiles: Record<string, ElderProfile>
+  familyProfiles: Record<string, FamilyProfile>
+  staffProfiles: Record<string, StaffProfile>
+  elderFamilyRelations: Record<string, ElderFamilyRelation>
   activeRole: Role
+  activeFamilyUserId: string
+  selectedFamilyElderId: string | null
   conversationState: ConversationState
   schemaVersion: number
 }
 
 export interface DemoStore extends DemoStateData {
   setActiveRole: (role: Role) => void
+  setActiveFamilyUser: (familyUserId: string) => boolean
+  selectFamilyElder: (elderId: string) => boolean
+  saveElderProfile: (profile: ElderProfile) => void
+  inviteFamilyRelation: (input: FamilyInvitationInput) => string | null
+  confirmFamilyRelation: (relationId: string) => boolean
   saveCase: (careCase: CareCase) => void
   submitElderMessage: (text: string) => void
-  submitFamilyMessage: (text: string) => void
+  createFamilyContactRequest: (input: ContactCheckRequestInput) => string | null
+  createFamilyItemRequest: (input: ItemHandoverRequestInput) => string | null
+  completeFamilyRequest: (caseId: string, resolutionResult: string) => boolean
   moveEscortCase: (caseId: string, targetStatus: CareCaseStatus) => boolean
   moveServiceCase: (caseId: string, targetStatus: CareCaseStatus) => boolean
   recordRiskFollowUp: (answer: RiskFollowUpAnswer) => boolean
@@ -41,14 +71,36 @@ export interface DemoStore extends DemoStateData {
   confirmAndInterveneSafetyCase: (caseId: string) => boolean
   decideEvaluationCase: (caseId: string, accepted: boolean, reason?: string) => boolean
   resetDemo: () => void
+  resetGoldenPathDemo: () => void
 }
+
+const cloneRecord = <T extends object>(source: Record<string, T>) =>
+  Object.fromEntries(Object.entries(source).map(([key, value]) => [key, { ...value }])) as Record<string, T>
 
 export const createInitialState = (): DemoStateData => ({
   cases: {},
+  institutions: cloneRecord(DEMO_INSTITUTIONS),
+  elderProfiles: cloneRecord(DEMO_ELDER_PROFILES),
+  familyProfiles: cloneRecord(DEMO_FAMILY_PROFILES),
+  staffProfiles: cloneRecord(DEMO_STAFF_PROFILES),
+  elderFamilyRelations: cloneRecord(DEMO_ELDER_FAMILY_RELATIONS),
   activeRole: 'ELDER',
+  activeFamilyUserId: 'F001',
+  selectedFamilyElderId: null,
   conversationState: createInitialConversationState(),
   schemaVersion: DEMO_SCHEMA_VERSION,
 })
+
+export const createGoldenPathState = (): DemoStateData => {
+  const initial = createInitialState()
+  return {
+    ...initial,
+    activeRole: 'STAFF',
+    elderFamilyRelations: {
+      'REL-002': { ...DEMO_ELDER_FAMILY_RELATIONS['REL-002'] },
+    },
+  }
+}
 
 const isActive = (careCase: CareCase) => !['COMPLETED', 'DECLINED'].includes(careCase.status)
 
@@ -62,6 +114,22 @@ const nextCaseId = (cases: Record<string, CareCase>, minimum = 1) => {
 
 export const createNextSafetyCaseId = (cases: Record<string, CareCase>) => nextCaseId(cases, 2)
 const createServiceCaseId = (cases: Record<string, CareCase>) => cases['CASE-001'] ? nextCaseId(cases) : 'CASE-001'
+
+const nextRelationId = (relations: Record<string, ElderFamilyRelation>) => {
+  const highest = Object.keys(relations).reduce((current, id) => {
+    const match = id.match(/^REL-(\d+)$/)
+    return match ? Math.max(current, Number(match[1])) : current
+  }, 0)
+  return `REL-${String(highest + 1).padStart(3, '0')}`
+}
+
+const nextFamilyUserId = (profiles: Record<string, FamilyProfile>) => {
+  const highest = Object.keys(profiles).reduce((current, id) => {
+    const match = id.match(/^F(\d+)$/)
+    return match ? Math.max(current, Number(match[1])) : current
+  }, 0)
+  return `F${String(highest + 1).padStart(3, '0')}`
+}
 
 const createMessagePair = (
   role: Extract<Role, 'ELDER' | 'FAMILY'>,
@@ -183,30 +251,79 @@ const createElderServiceCase = (
   return careCase
 }
 
-const createFamilyCase = (
+const createFamilyContactCase = (
   cases: Record<string, CareCase>,
-  draft: FamilyRequestDraft,
+  input: ContactCheckRequestInput,
+  relation: ElderFamilyRelation,
+  institutionId: string,
   now: string,
-  asEvaluation: boolean,
 ) => {
   const caseId = createServiceCaseId(cases)
-  const isContact = draft.serviceType === 'CONTACT_CHECK'
-  const title = isContact ? '协助确认老人当前情况并联系家属' : asEvaluation ? '用药协助待评估' : '家属物品转交'
   const careCase: CareCase = {
-    ...baseCase(caseId, 'F001', 'FAMILY', now),
-    caseType: asEvaluation ? 'EVALUATION' : 'FAMILY_REQUEST',
-    serviceType: draft.serviceType,
-    title,
-    requestSummary: draft.requestSummary ?? title,
-    itemType: draft.itemType,
-    itemName: draft.itemName,
-    itemArrivalStatus: draft.itemArrivalStatus,
-    providedDosageInstructions: draft.providedDosageInstructions,
-    specialInstruction: draft.specialInstruction,
-    evaluationDecision: asEvaluation ? 'PENDING' : null,
+    ...baseCase(caseId, input.requesterId, 'FAMILY', now),
+    subjectElderId: input.elderId,
+    relationId: relation.relationId,
+    institutionId,
+    caseType: 'FAMILY_REQUEST',
+    familyRequestType: 'CONTACT_CHECK',
+    requestType: 'UNREACHABLE_ELDER',
+    serviceType: 'CONTACT_CHECK',
+    title: '联系不上老人',
+    requestSummary: `家属已尝试联系 ${input.contactAttempts} 次，请工作人员协助确认老人当前情况。`,
+    priority: 'P0',
+    requesterRelation: RELATIONSHIP_LABELS[relation.relationship],
+    lastContactTime: input.lastContactTime,
+    contactAttempts: input.contactAttempts,
+    additionalNote: input.additionalNote || null,
     timeline: [
-      { id: `${caseId}-timeline-1`, occurredAt: now, label: `家属提出：${title}`, actorRole: 'FAMILY', statusAfter: 'WAITING' },
-      { id: `${caseId}-timeline-2`, occurredAt: now, label: asEvaluation ? '已进入待评估，等待工作人员决定' : '服务中心已收到家属需求', actorRole: 'SYSTEM', statusAfter: 'WAITING' },
+      { id: `${caseId}-timeline-1`, occurredAt: now, label: '家属提交：联系不上老人', actorRole: 'FAMILY', statusAfter: 'WAITING' },
+      { id: `${caseId}-timeline-2`, occurredAt: now, label: 'P0 家属请求已送达服务中心（不代表医学急症诊断）', actorRole: 'SYSTEM', statusAfter: 'WAITING' },
+    ],
+  }
+  return careCase
+}
+
+const MEDICATION_ASSISTANCE_PATTERN = /(喂药|服药|吃药|用药管理|管理用药|按时.{0,6}药|提醒.{0,6}药)/
+
+const createFamilyItemCase = (
+  cases: Record<string, CareCase>,
+  input: ItemHandoverRequestInput,
+  relation: ElderFamilyRelation,
+  institutionId: string,
+  now: string,
+) => {
+  const caseId = createServiceCaseId(cases)
+  const needsEvaluation = input.itemCategory === 'MEDICATION' && MEDICATION_ASSISTANCE_PATTERN.test(input.specialInstruction)
+  const careCase: CareCase = {
+    ...baseCase(caseId, input.requesterId, 'FAMILY', now),
+    subjectElderId: input.elderId,
+    relationId: relation.relationId,
+    institutionId,
+    caseType: needsEvaluation ? 'EVALUATION' : 'FAMILY_REQUEST',
+    familyRequestType: 'ITEM_HANDOVER',
+    requestType: 'ITEM_HANDOVER',
+    serviceType: 'FAMILY_ITEM_HANDOVER',
+    title: needsEvaluation ? '用药协助待人工评估' : '物品转交',
+    requestSummary: needsEvaluation
+      ? '家属提出涉及用药协助的请求，需由工作人员评估是否承接。'
+      : `转交 ${input.quantity} 件 ${input.itemName}`,
+    priority: 'P1',
+    requesterRelation: RELATIONSHIP_LABELS[relation.relationship],
+    itemType: input.itemCategory === 'MEDICATION' ? 'MEDICINE' : 'GENERAL',
+    itemName: input.itemName,
+    itemCategory: input.itemCategory,
+    quantity: input.quantity,
+    deliveryMethod: input.deliveryMethod,
+    expectedDeliveryTime: input.expectedDeliveryTime,
+    specialInstruction: input.specialInstruction || null,
+    medicationPackageNote: input.itemCategory === 'MEDICATION'
+      ? input.medicationPackageNote?.trim() || null
+      : null,
+    providedDosageInstructions: null,
+    evaluationDecision: needsEvaluation ? 'PENDING' : null,
+    timeline: [
+      { id: `${caseId}-timeline-1`, occurredAt: now, label: `家属提交：${needsEvaluation ? '用药协助评估' : '物品转交'}`, actorRole: 'FAMILY', statusAfter: 'WAITING' },
+      { id: `${caseId}-timeline-2`, occurredAt: now, label: needsEvaluation ? '请求不属于普通物品转交，已进入人工评估' : 'P1 物品转交请求已送达服务中心', actorRole: 'SYSTEM', statusAfter: 'WAITING' },
     ],
   }
   return careCase
@@ -274,6 +391,76 @@ export const createDemoStore = (storageKey = DEMO_STORAGE_KEY) =>
       (set, get) => ({
         ...createInitialState(),
         setActiveRole: (activeRole) => set({ activeRole }),
+        setActiveFamilyUser: (familyUserId) => {
+          if (!get().familyProfiles[familyUserId]) return false
+          set({ activeFamilyUserId: familyUserId, selectedFamilyElderId: null })
+          return true
+        },
+        selectFamilyElder: (elderId) => {
+          const state = get()
+          const canAccess = Object.values(state.elderFamilyRelations).some((relation) =>
+            relation.elderId === elderId &&
+            relation.familyUserId === state.activeFamilyUserId &&
+            relation.status === 'VERIFIED')
+          if (!canAccess) return false
+          set({ selectedFamilyElderId: elderId })
+          return true
+        },
+        saveElderProfile: (profile) => set((state) => ({
+          elderProfiles: { ...state.elderProfiles, [profile.elderId]: profile },
+        })),
+        inviteFamilyRelation: (input) => {
+          const state = get()
+          const elder = state.elderProfiles[input.elderId]
+          const staff = state.staffProfiles.S001
+          const familyName = input.familyName.trim()
+          const phone = input.phone.trim()
+          if (
+            state.activeRole !== 'STAFF' || !elder || !staff ||
+            staff.institutionId !== elder.institutionId || !familyName || !phone
+          ) return null
+          const existingFamily = Object.values(state.familyProfiles).find((profile) =>
+            profile.phone === phone || profile.name === familyName)
+          const familyUserId = existingFamily?.familyUserId ?? nextFamilyUserId(state.familyProfiles)
+          const familyProfile: FamilyProfile = { familyUserId, name: familyName, phone }
+          const existingRelation = Object.values(state.elderFamilyRelations).find((relation) =>
+            relation.elderId === input.elderId && relation.familyUserId === familyUserId && relation.status !== 'REVOKED')
+          if (existingRelation?.status === 'VERIFIED') return null
+          if (existingRelation?.status === 'PENDING') return existingRelation.relationId
+          const now = new Date().toISOString()
+          const relationId = nextRelationId(state.elderFamilyRelations)
+          const relation: ElderFamilyRelation = {
+            relationId,
+            elderId: input.elderId,
+            familyUserId,
+            relationship: input.relationship,
+            contactRole: input.contactRole,
+            status: 'PENDING',
+            createdAt: now,
+            verifiedAt: null,
+          }
+          set((current) => ({
+            familyProfiles: { ...current.familyProfiles, [familyUserId]: familyProfile },
+            elderFamilyRelations: { ...current.elderFamilyRelations, [relationId]: relation },
+          }))
+          return relationId
+        },
+        confirmFamilyRelation: (relationId) => {
+          const state = get()
+          const relation = state.elderFamilyRelations[relationId]
+          if (
+            state.activeRole !== 'FAMILY' || !relation || relation.status !== 'PENDING' ||
+            relation.familyUserId !== state.activeFamilyUserId
+          ) return false
+          const verifiedAt = new Date().toISOString()
+          set((current) => ({
+            elderFamilyRelations: {
+              ...current.elderFamilyRelations,
+              [relationId]: { ...relation, status: 'VERIFIED', verifiedAt },
+            },
+          }))
+          return true
+        },
         saveCase: (careCase) => set((state) => ({ cases: { ...state.cases, [careCase.caseId]: careCase } })),
         submitElderMessage: (rawText) => {
           const text = rawText.trim()
@@ -348,53 +535,87 @@ export const createDemoStore = (storageKey = DEMO_STORAGE_KEY) =>
           }
           set((current) => ({ conversationState: updateSession(current, 'ELDER', nextSession) }))
         },
-        submitFamilyMessage: (rawText) => {
-          const text = rawText.trim()
-          if (!text) return
+        createFamilyContactRequest: (input) => {
+          if (
+            !input.elderId.trim() || !input.requesterId.trim() || !input.relationId.trim() ||
+            !input.lastContactTime || !Number.isInteger(input.contactAttempts) || input.contactAttempts < 1
+          ) return null
           const state = get()
-          const session = state.conversationState.family
-          const decision = decideFamilyInput(text, session, state.cases)
+          const relation = state.elderFamilyRelations[input.relationId]
+          const elder = state.elderProfiles[input.elderId]
+          if (
+            !relation || relation.status !== 'VERIFIED' || !elder ||
+            relation.elderId !== input.elderId || relation.familyUserId !== input.requesterId ||
+            input.requesterId !== state.activeFamilyUserId
+          ) return null
+          const careCase = createFamilyContactCase(state.cases, {
+            ...input,
+            additionalNote: input.additionalNote.trim(),
+          }, relation, elder.institutionId, new Date().toISOString())
+          set((current) => ({ cases: { ...current.cases, [careCase.caseId]: careCase } }))
+          return careCase.caseId
+        },
+        createFamilyItemRequest: (input) => {
+          if (
+            !input.elderId.trim() || !input.requesterId.trim() || !input.itemName.trim() ||
+            !input.itemCategory || !Number.isInteger(input.quantity) || input.quantity < 1 ||
+            !input.deliveryMethod || !input.expectedDeliveryTime
+          ) return null
+          const state = get()
+          const relation = state.elderFamilyRelations[input.relationId]
+          const elder = state.elderProfiles[input.elderId]
+          if (
+            !relation || relation.status !== 'VERIFIED' || !elder ||
+            relation.elderId !== input.elderId || relation.familyUserId !== input.requesterId ||
+            input.requesterId !== state.activeFamilyUserId
+          ) return null
+          const careCase = createFamilyItemCase(state.cases, {
+            ...input,
+            itemName: input.itemName.trim(),
+            specialInstruction: input.specialInstruction.trim(),
+            medicationPackageNote: input.itemCategory === 'MEDICATION'
+              ? input.medicationPackageNote?.trim()
+              : undefined,
+          }, relation, elder.institutionId, new Date().toISOString())
+          set((current) => ({ cases: { ...current.cases, [careCase.caseId]: careCase } }))
+          return careCase.caseId
+        },
+        completeFamilyRequest: (caseId, rawResolutionResult) => {
+          const careCase = get().cases[caseId]
+          const resolutionResult = rawResolutionResult.trim()
+          if (
+            !careCase || careCase.caseType !== 'FAMILY_REQUEST' ||
+            careCase.status !== 'IN_PROGRESS' || get().activeRole !== 'STAFF' || !resolutionResult
+          ) return false
           const now = new Date().toISOString()
-          const nextSession = {
-            ...decision.nextContext,
-            messages: createMessagePair('FAMILY', session.messages, text, decision.reply, now),
+          const result = transitionServiceCase(careCase, 'COMPLETED', 'STAFF', now)
+          if (!result.ok) return false
+          const completed: CareCase = {
+            ...result.careCase,
+            resolutionResult,
+            resolvedAt: now,
+            timeline: result.careCase.timeline.map((event, index, timeline) => index === timeline.length - 1
+              ? { ...event, label: `处理结果：${resolutionResult}（已同步家属）` }
+              : event),
           }
-          if (decision.action === 'ESCALATE' && decision.riskEventType) {
-            const careCase = createSafetyCase(state.cases, text, decision.riskEventType, decision.riskEvidence, 'FAMILY', now)
-            nextSession.activeCaseId = careCase.caseId
-            set((current) => ({
-              cases: { ...current.cases, [careCase.caseId]: careCase },
-              conversationState: updateSession(current, 'FAMILY', nextSession),
-            }))
-            return
-          }
-          if (decision.action === 'SUPPLEMENT_CASE' && decision.targetCaseId) {
-            const careCase = state.cases[decision.targetCaseId]
-            if (careCase?.caseType === 'SAFETY') {
-              const updated = supplementSafety(careCase, text, decision.riskEventType, 'FAMILY', now)
-              set((current) => ({
-                cases: { ...current.cases, [careCase.caseId]: updated },
-                conversationState: updateSession(current, 'FAMILY', nextSession),
-              }))
-              return
-            }
-          }
-          if ((decision.action === 'CREATE_CASE' || decision.action === 'CREATE_EVALUATION') && decision.draft) {
-            const careCase = createFamilyCase(state.cases, decision.draft, now, decision.action === 'CREATE_EVALUATION')
-            set((current) => ({
-              cases: { ...current.cases, [careCase.caseId]: careCase },
-              conversationState: updateSession(current, 'FAMILY', nextSession),
-            }))
-            return
-          }
-          set((current) => ({ conversationState: updateSession(current, 'FAMILY', nextSession) }))
+          set((state) => ({ cases: { ...state.cases, [caseId]: completed } }))
+          return true
         },
         moveServiceCase: (caseId, targetStatus) => {
           const careCase = get().cases[caseId]
           if (!careCase) return false
+          if (careCase.caseType === 'FAMILY_REQUEST' && targetStatus === 'COMPLETED') return false
           const result = transitionServiceCase(careCase, targetStatus, get().activeRole, new Date().toISOString())
           if (!result.ok) return false
-          set((state) => ({ cases: { ...state.cases, [caseId]: result.careCase } }))
+          const staffName = get().staffProfiles.S001?.name ?? '工作人员'
+          const updated: CareCase = {
+            ...result.careCase,
+            assignedStaff: targetStatus === 'ACCEPTED' ? staffName : result.careCase.assignedStaff,
+            timeline: result.careCase.timeline.map((event, index, timeline) => index === timeline.length - 1
+              ? { ...event, label: event.label.replace('李师傅', staffName) }
+              : event),
+          }
+          set((state) => ({ cases: { ...state.cases, [caseId]: updated } }))
           return true
         },
         moveEscortCase: (caseId, targetStatus) => get().moveServiceCase(caseId, targetStatus),
@@ -529,13 +750,46 @@ export const createDemoStore = (storageKey = DEMO_STORAGE_KEY) =>
           return true
         },
         resetDemo: () => set(createInitialState()),
+        resetGoldenPathDemo: () => set(createGoldenPathState()),
       }),
       {
         name: storageKey,
         version: DEMO_SCHEMA_VERSION,
         storage: createJSONStorage(() => localStorage),
-        partialize: ({ cases, activeRole, conversationState, schemaVersion }) => ({ cases, activeRole, conversationState, schemaVersion }),
-        migrate: () => createInitialState(),
+        partialize: ({
+          cases,
+          institutions,
+          elderProfiles,
+          familyProfiles,
+          staffProfiles,
+          elderFamilyRelations,
+          activeRole,
+          activeFamilyUserId,
+          selectedFamilyElderId,
+          conversationState,
+          schemaVersion,
+        }) => ({
+          cases,
+          institutions,
+          elderProfiles,
+          familyProfiles,
+          staffProfiles,
+          elderFamilyRelations,
+          activeRole,
+          activeFamilyUserId,
+          selectedFamilyElderId,
+          conversationState,
+          schemaVersion,
+        }),
+        migrate: (persistedState) => {
+          const legacy = persistedState as Partial<DemoStateData>
+          return {
+            ...createInitialState(),
+            cases: legacy.cases ?? {},
+            activeRole: legacy.activeRole ?? 'ELDER',
+            conversationState: legacy.conversationState ?? createInitialConversationState(),
+          }
+        },
       },
     ),
   )
