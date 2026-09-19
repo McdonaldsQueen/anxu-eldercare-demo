@@ -34,6 +34,7 @@ const MAX_EVENTS = 20
 const listeners = new Set<() => void>()
 let memoryEvents: OpenhexDiagnosticEvent[] = []
 let initialized = false
+let diagnosticGeneration = 0
 
 const hasSessionStorage = () => typeof window !== 'undefined' && Boolean(window.sessionStorage)
 
@@ -69,7 +70,10 @@ export const subscribeOpenhexDiagnostics = (listener: () => void) => {
   return () => listeners.delete(listener)
 }
 
-export const clearOpenhexDiagnostics = () => writeStoredEvents([])
+export const clearOpenhexDiagnostics = () => {
+  diagnosticGeneration += 1
+  writeStoredEvents([])
+}
 
 export const conversationSuffix = (conversationId?: string) =>
   conversationId ? conversationId.slice(-6) : undefined
@@ -125,6 +129,7 @@ export const createOpenhexDiagnosticFetch = (
   const method = (init?.method ?? (input instanceof Request ? input.method : 'GET')).toUpperCase()
   const phase = phaseForUrl(url, method)
   const startedAt = now()
+  const requestGeneration = diagnosticGeneration
 
   if (phase) recordOpenhexDiagnostic({ phase, outcome: 'started' })
 
@@ -132,13 +137,14 @@ export const createOpenhexDiagnosticFetch = (
     const response = await request(input, init)
     if (phase === 'send' && response.ok && onConversationId) {
       void response.clone().json().then((payload: unknown) => {
+        if (requestGeneration !== diagnosticGeneration) return
         const conversationId = (payload as { conversationId?: unknown } | null)?.conversationId
         if (typeof conversationId === 'string' && conversationId) onConversationId(conversationId)
       }).catch(() => {
         // Conversation capture is a recovery aid and must never break sending.
       })
     }
-    if (phase) {
+    if (phase && requestGeneration === diagnosticGeneration) {
       recordOpenhexDiagnostic({
         phase,
         outcome: response.ok ? 'success' : classifyOpenhexFailure(null, response.status),
@@ -148,7 +154,7 @@ export const createOpenhexDiagnosticFetch = (
     }
     return response
   } catch (error) {
-    if (phase) {
+    if (phase && requestGeneration === diagnosticGeneration) {
       recordOpenhexDiagnostic({
         phase,
         outcome: classifyOpenhexFailure(error),

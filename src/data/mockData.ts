@@ -8,7 +8,7 @@ import type {
   StaffProfile,
 } from '../domain/models'
 
-export const DEMO_SCHEMA_VERSION = 6
+export const DEMO_SCHEMA_VERSION = 7
 
 export const DEMO_INSTITUTIONS: Record<string, Institution> = {
   I001: { institutionId: 'I001', name: '安序养老服务中心' },

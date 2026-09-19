@@ -66,7 +66,7 @@ export function FamilyHomePage() {
             <span className="family-risk-banner__icon"><AlertIcon /></span>
             <div>
               <p className="eyebrow">P0 · 需要关注</p>
-              <h2>{elder.name}刚刚报告{activeSafetyCase.eventType === 'FALL' ? '发生跌倒' : activeRiskDefinition?.label}</h2>
+              <h2>{activeSafetyCase.caseSource === 'WEARABLE_SENSOR' ? activeSafetyCase.requestSummary : `${elder.name}刚刚报告${activeSafetyCase.eventType === 'FALL' ? '发生跌倒' : activeRiskDefinition?.label}`}</h2>
               <p>{activeSafetyCase.selfHandling === 'UNABLE' ? `${elder.name}表示目前无法自行起身。` : `${activeRiskDefinition?.label}信息已记录。`}服务中心已收到信息。</p>
               <strong>{riskMessage}</strong>
             </div>
@@ -88,7 +88,7 @@ export function FamilyHomePage() {
             <span className="assistant-icon"><SparkIcon /></span>
             <p className="eyebrow">家属服务申请</p>
             <h2>需要工作人员协助？</h2>
-            <p>选择一项明确服务并填写必要信息，提交后可在本页查看处理进度与结果。</p>
+            <p>选择需求并用自己的话描述，提交后可在本页查看处理进度与结果。</p>
             <FamilyConversation elder={elder} family={family} relation={relation} />
           </aside>
         </div>

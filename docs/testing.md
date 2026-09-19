@@ -15,6 +15,7 @@ git diff --check
 | Case 状态或 store | `demoStore.test.ts`、`phase4.test.ts` |
 | 本地意图解析 | `mockDecisionEngine.test.ts` |
 | 家属对话 | `FamilyConversation.test.tsx` |
+| 全局重置与访客 Cookie 失效 | `demoReset.test.ts`、`demoResetApi.test.ts`、`App.test.tsx` |
 
 ## UI 验收
 

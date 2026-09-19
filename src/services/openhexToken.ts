@@ -19,6 +19,8 @@ interface CachedToken {
 
 let cachedToken: CachedToken | null = null
 let inFlightRequest: Promise<string> | null = null
+let activeRequestController: AbortController | null = null
+let cacheGeneration = 0
 
 const isTokenResponse = (value: unknown): value is TokenResponse => {
   if (!value || typeof value !== 'object') return false
@@ -37,9 +39,11 @@ export async function getOpenhexToken(
 
   if (inFlightRequest) return inFlightRequest
 
-  inFlightRequest = (async () => {
+  const requestGeneration = cacheGeneration
+  const requestPromise = (async () => {
     const startedAt = Date.now()
     const controller = new AbortController()
+    activeRequestController = controller
     const timeout = globalThis.setTimeout(() => controller.abort(), TOKEN_REQUEST_TIMEOUT_MS)
     recordOpenhexDiagnostic({ phase: 'token', outcome: 'started' })
 
@@ -52,13 +56,17 @@ export async function getOpenhexToken(
         signal: controller.signal,
       })
     } catch (error) {
+      if (requestGeneration !== cacheGeneration) throw error
       const outcome = controller.signal.aborted ? 'timeout' : classifyOpenhexFailure(error)
       recordOpenhexDiagnostic({ phase: 'token', outcome, durationMs: Date.now() - startedAt })
       if (outcome === 'timeout') throw new Error('连接安序智护超时，请稍后重试。')
       throw error
     } finally {
       globalThis.clearTimeout(timeout)
+      if (activeRequestController === controller) activeRequestController = null
     }
+
+    if (requestGeneration !== cacheGeneration) throw new Error('OpenHex token request cancelled by demo reset')
 
     if (!response.ok) {
       recordOpenhexDiagnostic({
@@ -71,6 +79,7 @@ export async function getOpenhexToken(
     }
 
     const payload: unknown = await response.json()
+    if (requestGeneration !== cacheGeneration) throw new Error('OpenHex token request cancelled by demo reset')
     if (!isTokenResponse(payload)) {
       throw new Error('安序智护返回了无法识别的会话信息。')
     }
@@ -89,15 +98,19 @@ export async function getOpenhexToken(
     })
     return payload.token
   })()
+  inFlightRequest = requestPromise
 
   try {
-    return await inFlightRequest
+    return await requestPromise
   } finally {
-    inFlightRequest = null
+    if (inFlightRequest === requestPromise) inFlightRequest = null
   }
 }
 
 export function resetOpenhexTokenCache() {
+  cacheGeneration += 1
+  activeRequestController?.abort()
+  activeRequestController = null
   cachedToken = null
   inFlightRequest = null
 }

@@ -64,4 +64,18 @@ describe('OpenHex diagnostics', () => {
 
     expect(JSON.stringify(getOpenhexDiagnostics())).not.toContain('conversation-secret-id')
   })
+
+  it('discards a request result that arrives after diagnostics are reset', async () => {
+    let finishRequest: ((response: Response) => void) | undefined
+    const request = vi.fn(() => new Promise<Response>((resolve) => { finishRequest = resolve }))
+    const diagnosticFetch = createOpenhexDiagnosticFetch(request)
+
+    const pending = diagnosticFetch('https://api.openhex.tech/api/v2/conversations/history')
+    expect(getOpenhexDiagnostics()).toHaveLength(1)
+    clearOpenhexDiagnostics()
+    finishRequest?.(new Response(null, { status: 200 }))
+    await pending
+
+    expect(getOpenhexDiagnostics()).toEqual([])
+  })
 })

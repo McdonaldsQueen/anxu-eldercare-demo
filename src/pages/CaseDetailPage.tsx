@@ -120,7 +120,7 @@ export function CaseDetailPage({ role }: { role: Extract<Role, 'ELDER' | 'FAMILY
           <div>
             <p className="eyebrow">{audience}</p>
             <h1>{isSafety ? riskDefinition?.caseTitle : careCase.serviceType === 'MEDICAL_ESCORT' ? `${appointmentDate}${escortPeriod}陪诊` : careCase.title ?? '服务需求'}</h1>
-            <p>{isSafety ? `${elder?.name ?? careCase.subjectElderId} · ${careCase.selfHandling === 'UNABLE' ? '当前无法自行起身' : riskDefinition?.reportSummary}` : `${elder?.name ?? careCase.subjectElderId} · ${careCase.requestSummary ?? [careCase.hospital, careCase.appointmentTime].filter(Boolean).join(' · ')}`}</p>
+            <p>{isSafety ? `${elder?.name ?? careCase.subjectElderId} · ${careCase.caseSource === 'WEARABLE_SENSOR' ? careCase.requestSummary : careCase.selfHandling === 'UNABLE' ? '当前无法自行起身' : riskDefinition?.reportSummary}` : `${elder?.name ?? careCase.subjectElderId} · ${careCase.requestSummary ?? [careCase.hospital, careCase.appointmentTime].filter(Boolean).join(' · ')}`}</p>
           </div>
           <span className={`detail-status detail-status--${careCase.status.toLowerCase()} ${isSafety ? 'detail-status--risk' : ''}`}>
             {statusLabel}
@@ -152,7 +152,7 @@ export function CaseDetailPage({ role }: { role: Extract<Role, 'ELDER' | 'FAMILY
             <small>补充内容会进入同一个安全事件，不会自动改变 P0 等级。</small>
           </section>
         )}
-        {isFamilyRequest && careCase.familyRequestType === 'CONTACT_CHECK' && (
+        {isFamilyRequest && careCase.familyRequestType === 'CONTACT_CHECK' && careCase.lastContactTime && (
           <section className="safety-supplement">
             <strong>联系确认信息</strong>
             <p>最后联系时间：{careCase.lastContactTime}；已尝试 {careCase.contactAttempts} 次</p>

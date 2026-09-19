@@ -6,6 +6,8 @@
 
 `ohx_ref` Cookie 使用 `HttpOnly`、`SameSite=Lax`、180 天有效期，Production 环境增加 `Secure`。SDK 使用 `anxu-eldercare-agent-chat` 恢复同一浏览器的对话。
 
+全局「重置演示」先向同源 `POST /api/openhex/demo-reset` 请求使 `ohx_ref` 过期，再调用 SDK 的 `chat.clear()`，清除其 `ohx:convo:anxu-eldercare-agent-chat` 持久化键、前端令牌缓存与诊断记录。静态预览没有 API 时仍清除本地会话；下一条消息会创建新对话，不会恢复旧 `conversationId`。重置不会删除 OpenHex 服务端已有的历史记录。
+
 ## 超时边界
 
 | 环节 | 边界 | 行为 |

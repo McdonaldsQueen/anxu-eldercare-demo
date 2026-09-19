@@ -60,6 +60,7 @@ export function StaffTaskDetailPage() {
   const isSafety = careCase.caseType === 'SAFETY'
   const isEvaluation = careCase.caseType === 'EVALUATION'
   const isFamilyRequest = careCase.caseType === 'FAMILY_REQUEST'
+  const fromFamily = careCase.caseSource === 'FAMILY_REQUEST'
   const elder = elderProfiles[careCase.subjectElderId]
   const family = familyProfiles[careCase.requesterId]
   const familyRelation = careCase.relationId ? relations[careCase.relationId] : undefined
@@ -103,13 +104,13 @@ export function StaffTaskDetailPage() {
             <header className="task-detail-heading">
               <span className={`detail-hero__icon ${isSafety ? 'detail-hero__icon--risk' : ''}`}>{isSafety ? <AlertIcon /> : <ClipboardIcon />}</span>
               <div>
-                <p className="eyebrow">{careCase.caseId} · {isSafety ? careCase.finalPriority ? `${careCase.finalPriority} 已确认` : 'AI 建议 P0 · 待人工审核' : isEvaluation ? '待评估需求' : `${careCase.priority} ${isFamilyRequest ? '家属工单' : '普通'}`}</p>
+                <p className="eyebrow">{careCase.caseId} · {careCase.caseSource === 'WEARABLE_SENSOR' ? '设备预警' : fromFamily ? '家属需求' : '老人需求'} · {careCase.finalPriority ?? careCase.priority} · {careCase.status}</p>
                 <h1>{elder?.name ?? careCase.subjectElderId} · {isSafety ? riskDefinition?.label : careCase.title ?? '服务需求'}</h1>
-                <p>{isSafety ? (careCase.selfHandling === 'UNABLE' ? '当前无法自行起身' : `${elder?.name ?? careCase.subjectElderId}报告${riskDefinition?.label ?? '安全风险'}`) : careCase.requestSummary ?? `${careCase.appointmentTime} · ${careCase.hospital}`}</p>
+                <p>{careCase.requestSummary ?? `${careCase.appointmentTime} · ${careCase.hospital}`}</p>
               </div>
               <span className={`detail-status ${isSafety ? 'detail-status--risk' : ''}`}>{displayedStatus}</span>
             </header>
-            {isFamilyRequest ? (
+            {fromFamily ? (
               <dl className="task-facts">
                 <div><dt>老人</dt><dd>{elder?.name ?? careCase.subjectElderId}（{careCase.subjectElderId}）{elder ? ` · ${elder.room}房` : ''}</dd></div>
                 <div><dt>请求人</dt><dd>{family?.name ?? careCase.requesterId}（{careCase.requesterId}）</dd></div>
@@ -117,24 +118,31 @@ export function StaffTaskDetailPage() {
                   <div><dt>关系</dt><dd>{RELATIONSHIP_LABELS[familyRelation.relationship]}</dd></div>
                   <div><dt>联系人角色</dt><dd>{CONTACT_ROLE_LABELS[familyRelation.contactRole]}</dd></div>
                 </>}
-                {careCase.familyRequestType === 'CONTACT_CHECK' ? <>
+                {careCase.familyRequestType === 'CONTACT_CHECK' && careCase.lastContactTime ? <>
                   <div><dt>最后联系时间</dt><dd>{careCase.lastContactTime}</dd></div>
                   <div><dt>联系尝试</dt><dd>{careCase.contactAttempts} 次</dd></div>
-                </> : <>
-                  <div><dt>物品</dt><dd>{careCase.itemName} × {careCase.quantity}</dd></div>
-                  <div><dt>物品类别</dt><dd>{careCase.itemCategory}</dd></div>
-                  <div><dt>交付方式</dt><dd>{careCase.deliveryMethod}</dd></div>
-                  <div><dt>预计送达</dt><dd>{careCase.expectedDeliveryTime}</dd></div>
-                </>}
+                </> : careCase.familyRequestType === 'ITEM_HANDOVER' ? <>
+                  <div><dt>物品</dt><dd>{careCase.itemName ?? '待工作人员确认'}{careCase.quantity ? ` × ${careCase.quantity}` : ''}</dd></div>
+                  <div><dt>物品类别</dt><dd>{careCase.itemCategory ?? '待确认'}</dd></div>
+                  {careCase.deliveryMethod && <div><dt>交付方式</dt><dd>{careCase.deliveryMethod}</dd></div>}
+                  {careCase.expectedDeliveryTime && <div><dt>预计送达</dt><dd>{careCase.expectedDeliveryTime}</dd></div>}
+                </> : null}
               </dl>
             ) : (
               <dl className="task-facts">
                 <div><dt>服务对象</dt><dd>{elder?.name ?? careCase.subjectElderId}</dd></div>
                 <div><dt>{isSafety ? '事件' : '服务需求'}</dt><dd>{isSafety ? riskDefinition?.label : careCase.requestSummary ?? `陪同前往${careCase.hospital}完成就诊`}</dd></div>
-                <div><dt>{isSafety ? '当前情况' : '预约时间'}</dt><dd>{isSafety ? (careCase.selfHandling === 'UNABLE' ? '老人表示无法自行起身' : '老人已提交风险情况') : careCase.appointmentTime}</dd></div>
-                <div><dt>{isSafety ? '风险等级' : '预计上门'}</dt><dd>{isSafety ? careCase.finalPriority ? `${careCase.finalPriority} · 人工已确认` : `${careCase.suggestedRiskLevel} · AI 建议，待确认` : careCase.arrivalTime ?? '接单后确认'}</dd></div>
+                <div><dt>{isSafety ? '当前情况' : '预约时间'}</dt><dd>{isSafety ? careCase.caseSource === 'WEARABLE_SENSOR' ? careCase.requestSummary : careCase.selfHandling === 'UNABLE' ? '老人表示无法自行起身' : '老人已提交风险情况' : careCase.appointmentTime}</dd></div>
+                <div><dt>{isSafety ? '风险等级' : '预计上门'}</dt><dd>{isSafety ? careCase.finalPriority ? `${careCase.finalPriority} · 人工已确认` : `${careCase.suggestedRiskLevel} · ${careCase.caseSource === 'WEARABLE_SENSOR' ? '设备规则提示' : 'AI 建议'}，待确认` : careCase.arrivalTime ?? '接单后确认'}</dd></div>
               </dl>
             )}
+            <div className="request-notes">
+              <p><strong>来源：</strong>{careCase.caseSource === 'WEARABLE_SENSOR' ? '安序手表' : fromFamily ? '家属需求' : '老人需求'}</p>
+              <p><strong>请求人：</strong>{careCase.caseSource === 'WEARABLE_SENSOR' ? '安序手表' : fromFamily ? family?.name ?? careCase.requesterId : elder?.name ?? careCase.requesterId}</p>
+              <p><strong>服务对象：</strong>{elder?.name ?? careCase.subjectElderId} · {careCase.subjectElderId}{elder ? ` · ${elder.room}房` : ''}</p>
+              {careCase.agentSummary && <p><strong>需求整理：</strong>{careCase.agentSummary}</p>}
+              <p><strong>现在需要：</strong>{careCase.staffActionSummary ?? (isSafety ? '人工确认风险并介入。' : '核对需求并安排处理。')}</p>
+            </div>
             {isFamilyRequest && (careCase.additionalNote || careCase.specialInstruction || careCase.medicationPackageNote) && (
               <div className="request-notes">
                 {careCase.additionalNote && <p><strong>家属补充：</strong>{careCase.additionalNote}</p>}
@@ -144,7 +152,7 @@ export function StaffTaskDetailPage() {
             )}
             {isSafety && (
               <div className="ai-safety-summary">
-                <p className="eyebrow">AI 风险建议（非最终结论）</p>
+                <p className="eyebrow">{careCase.caseSource === 'WEARABLE_SENSOR' ? 'Demo 设备规则提示（非医学诊断）' : 'AI 风险建议（非最终结论）'}</p>
                 <p><CheckIcon /> 建议类型：{careCase.suggestedRiskType}</p>
                 <p><CheckIcon /> 建议等级：{careCase.suggestedRiskLevel}</p>
                 <p><CheckIcon /> 风险信号：{careCase.riskSignals?.join('、')}</p>
@@ -186,12 +194,17 @@ export function StaffTaskDetailPage() {
               <section className="human-review-panel" aria-label="待评估需求审核">
                 <p className="eyebrow">仅工作人员可决定</p>
                 <h2>中心是否承接此需求？</h2>
+                <p>请求人：{fromFamily ? family?.name ?? careCase.requesterId : elder?.name ?? careCase.requesterId}</p>
+                <p>老人：{elder?.name ?? careCase.subjectElderId} · {careCase.subjectElderId}</p>
+                <p>需求整理：{careCase.agentSummary ?? careCase.requestSummary}</p>
+                <p>为什么需要人工判断：{careCase.reasoningSummary ?? '需确认服务范围及条件。'}</p>
+                <p>工作人员需要决定：{careCase.staffActionSummary ?? '是否承接及如何处理。'}</p>
                 {careCase.itemType === 'MEDICINE' && <p>药品：{careCase.itemName}；包装备注：{careCase.medicationPackageNote ?? '无'}；家属请求：{careCase.specialInstruction ?? '无'}</p>}
-                <button className="primary-button" type="button" onClick={() => decideEvaluationCase(careCase.caseId, true)}>接受并转普通服务</button>
+                <button className="primary-button" type="button" onClick={() => decideEvaluationCase(careCase.caseId, true)}>承接</button>
                 <label>不承接原因
                   <input aria-label="不承接原因" value={declineReason} onChange={(event) => setDeclineReason(event.target.value)} />
                 </label>
-                <button type="button" disabled={!declineReason.trim()} onClick={() => decideEvaluationCase(careCase.caseId, false, declineReason)}>不承接并同步原因</button>
+                <button type="button" disabled={!declineReason.trim()} onClick={() => decideEvaluationCase(careCase.caseId, false, declineReason)}>暂不承接</button>
               </section>
             )}
             {action && (

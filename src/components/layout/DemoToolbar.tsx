@@ -8,7 +8,6 @@ import {
 import { useDemoStore } from '../../store/demoStore'
 import { useDemoUiStore } from '../../store/demoUiStore'
 import { AlertIcon, CheckIcon, ClipboardIcon, SparkIcon } from '../ui/Icons'
-import { ResetDemo } from './ResetDemo'
 
 const phaseLabel = {
   token: '访客令牌',
@@ -143,7 +142,6 @@ export function DemoToolbar() {
             <div className="diagnostic-summary__actions">
               <button type="button" disabled={!diagnostics.length} onClick={copyDiagnostics}>复制诊断信息</button>
               <button type="button" disabled={!diagnostics.length} onClick={clearOpenhexDiagnostics}>清空</button>
-              <ResetDemo />
             </div>
             {copyState && <p className="demo-toolbar__note" role="status">{copyState}</p>}
           </section>

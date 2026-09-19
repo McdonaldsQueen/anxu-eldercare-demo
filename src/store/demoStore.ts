@@ -11,6 +11,8 @@ import {
 } from '../data/mockData'
 import { transitionSafetyCase, transitionServiceCase } from '../domain/caseStateMachine'
 import { RELATIONSHIP_LABELS } from '../domain/identity'
+import { interpretFamilyRequest } from '../domain/familyRequestInterpreter'
+import { initialSensorSnapshot, simulateSensorReading } from '../domain/sensorRules'
 import { decideElderInput } from '../domain/mockDecisionEngine'
 import { OPEN_DESCRIPTION_PROMPT, RISK_CATALOG, RISK_FOLLOW_UP_LABELS } from '../domain/riskCatalog'
 import type {
@@ -22,6 +24,7 @@ import type {
   ConversationState,
   ElderFamilyRelation,
   ElderProfile,
+  FamilyNaturalRequestInput,
   FamilyInvitationInput,
   FamilyProfile,
   Institution,
@@ -29,6 +32,8 @@ import type {
   RiskEventType,
   RiskFollowUpAnswer,
   Role,
+  SensorScenario,
+  SensorSnapshot,
   SafetyReviewInput,
   ServiceRequestDraft,
   StaffProfile,
@@ -48,6 +53,7 @@ export interface DemoStateData {
   activeFamilyUserId: string
   selectedFamilyElderId: string | null
   conversationState: ConversationState
+  sensorSnapshots: Record<string, SensorSnapshot>
   schemaVersion: number
 }
 
@@ -62,6 +68,9 @@ export interface DemoStore extends DemoStateData {
   submitElderMessage: (text: string) => void
   createFamilyContactRequest: (input: ContactCheckRequestInput) => string | null
   createFamilyItemRequest: (input: ItemHandoverRequestInput) => string | null
+  createFamilyNaturalRequest: (input: FamilyNaturalRequestInput) => string | null
+  simulateSensorEvent: (elderId: string, scenario: SensorScenario) => string | null
+  resetSensorState: () => void
   completeFamilyRequest: (caseId: string, resolutionResult: string) => boolean
   moveEscortCase: (caseId: string, targetStatus: CareCaseStatus) => boolean
   moveServiceCase: (caseId: string, targetStatus: CareCaseStatus) => boolean
@@ -88,6 +97,7 @@ export const createInitialState = (): DemoStateData => ({
   activeFamilyUserId: 'F001',
   selectedFamilyElderId: null,
   conversationState: createInitialConversationState(),
+  sensorSnapshots: { E001: initialSensorSnapshot('E001') },
   schemaVersion: DEMO_SCHEMA_VERSION,
 })
 
@@ -153,13 +163,13 @@ const baseCase = (
   requesterRole: Extract<Role, 'ELDER' | 'FAMILY'>,
   now: string,
 ): Pick<CareCase,
-  'caseId' | 'subjectElderId' | 'requesterId' | 'requesterRole' | 'eventType' |
+  'caseId' | 'caseSource' | 'subjectElderId' | 'requesterId' | 'requesterRole' | 'eventType' |
   'detectedRiskEvents' | 'latestRiskEventType' | 'riskLevel' | 'priority' | 'status' |
   'hospital' | 'appointmentTime' | 'assignedStaff' | 'arrivalTime' | 'selfHandling' |
   'reportedSymptoms' | 'additionalInformation' | 'reviewConfirmedAt' |
   'interventionStartedAt' | 'createdAt' | 'updatedAt' | 'timeline'
 > => ({
-  caseId, subjectElderId: 'E001', requesterId, requesterRole,
+  caseId, caseSource: requesterRole === 'FAMILY' ? 'FAMILY_REQUEST' : 'ELDER_INPUT', subjectElderId: 'E001', requesterId, requesterRole,
   eventType: null, detectedRiskEvents: [], latestRiskEventType: null,
   riskLevel: 'NORMAL', priority: 'P2', status: 'WAITING',
   hospital: null, appointmentTime: null, assignedStaff: null, arrivalTime: null,
@@ -236,6 +246,12 @@ const createElderServiceCase = (
     serviceType: draft.serviceType,
     title,
     requestSummary: summary,
+    agentSummary: draft.category === 'MEDICAL_ESCORT'
+      ? `老人需要陪诊：${draft.date} ${draft.appointmentTime}，前往${draft.hospital}。`
+      : `老人需求：${summary}`,
+    staffActionSummary: draft.category === 'MEDICAL_ESCORT'
+      ? '确认就诊时间与陪同安排，接单后反馈老人。'
+      : '核对需求，安排服务并反馈老人。',
     hospital: draft.hospital,
     appointmentTime: draft.category === 'MEDICAL_ESCORT'
       ? `${draft.date} ${draft.appointmentTime}`
@@ -270,6 +286,8 @@ const createFamilyContactCase = (
     serviceType: 'CONTACT_CHECK',
     title: '联系不上老人',
     requestSummary: `家属已尝试联系 ${input.contactAttempts} 次，请工作人员协助确认老人当前情况。`,
+    agentSummary: `联系确认：${input.additionalNote.trim() || '家属多次联系未果'}`,
+    staffActionSummary: '优先联系或现场确认老人情况，并将实际结果反馈家属。',
     priority: 'P0',
     requesterRelation: RELATIONSHIP_LABELS[relation.relationship],
     lastContactTime: input.lastContactTime,
@@ -293,7 +311,7 @@ const createFamilyItemCase = (
   now: string,
 ) => {
   const caseId = createServiceCaseId(cases)
-  const needsEvaluation = input.itemCategory === 'MEDICATION' && MEDICATION_ASSISTANCE_PATTERN.test(input.specialInstruction)
+  const needsEvaluation = input.itemCategory === 'MEDICATION' || MEDICATION_ASSISTANCE_PATTERN.test(input.specialInstruction) || /(易碎|玻璃|大型|大件|不确定)/.test(`${input.itemName} ${input.specialInstruction}`)
   const careCase: CareCase = {
     ...baseCase(caseId, input.requesterId, 'FAMILY', now),
     subjectElderId: input.elderId,
@@ -307,6 +325,9 @@ const createFamilyItemCase = (
     requestSummary: needsEvaluation
       ? '家属提出涉及用药协助的请求，需由工作人员评估是否承接。'
       : `转交 ${input.quantity} 件 ${input.itemName}`,
+    agentSummary: `物品：${input.itemName}；说明：${input.specialInstruction || '无补充'}`,
+    staffActionSummary: needsEvaluation ? '人工判断是否承接及交接条件。' : '确认物品及交接方式，完成后反馈家属。',
+    reasoningSummary: needsEvaluation ? '药品、易碎、大件或不明确物品需人工判断。' : null,
     priority: 'P1',
     requesterRelation: RELATIONSHIP_LABELS[relation.relationship],
     itemType: input.itemCategory === 'MEDICATION' ? 'MEDICINE' : 'GENERAL',
@@ -506,6 +527,8 @@ export const createDemoStore = (storageKey = DEMO_STORAGE_KEY) =>
               const updated: CareCase = {
                 ...careCase, hospital: decision.draft.hospital,
                 appointmentTime: `${decision.draft.date} ${decision.draft.appointmentTime}`,
+                requestSummary: `${decision.draft.date} ${decision.draft.appointmentTime} · ${decision.draft.hospital}`,
+                agentSummary: `老人需要陪诊：${decision.draft.date} ${decision.draft.appointmentTime}，前往${decision.draft.hospital}。`,
                 updatedAt: now, timeline: [...careCase.timeline, event],
               }
               set((current) => ({
@@ -516,6 +539,21 @@ export const createDemoStore = (storageKey = DEMO_STORAGE_KEY) =>
             }
           }
           if (decision.action === 'CREATE_CASE' && decision.draft) {
+            const draft = decision.draft
+            const appointmentTime = draft.category === 'MEDICAL_ESCORT'
+              ? `${draft.date} ${draft.appointmentTime}`
+              : [draft.date, draft.appointmentTime ?? (draft.timePeriod === 'AFTERNOON' ? '下午' : draft.timePeriod === 'MORNING' ? '上午' : null)].filter(Boolean).join(' ') || null
+            const existing = Object.values(state.cases).find((careCase) =>
+              careCase.caseSource === 'ELDER_INPUT' && careCase.subjectElderId === 'E001' &&
+              careCase.caseType === 'SERVICE' && isActive(careCase) &&
+              careCase.serviceType === draft.serviceType && careCase.hospital === draft.hospital &&
+              careCase.appointmentTime === appointmentTime &&
+              (draft.category === 'MEDICAL_ESCORT' || careCase.requestSummary === draft.requestSummary))
+            if (existing) {
+              nextSession.activeCaseId = existing.caseId
+              set((current) => ({ conversationState: updateSession(current, 'ELDER', nextSession) }))
+              return
+            }
             const careCase = createElderServiceCase(state.cases, decision.draft, now)
             nextSession.activeCaseId = careCase.caseId
             set((current) => ({
@@ -580,6 +618,108 @@ export const createDemoStore = (storageKey = DEMO_STORAGE_KEY) =>
           set((current) => ({ cases: { ...current.cases, [careCase.caseId]: careCase } }))
           return careCase.caseId
         },
+        createFamilyNaturalRequest: (input) => {
+          const state = get()
+          const relation = state.elderFamilyRelations[input.relationId]
+          const elder = state.elderProfiles[input.elderId]
+          const family = state.familyProfiles[input.requesterId]
+          if (!input.description.trim() || !relation || relation.status !== 'VERIFIED' || !elder || !family ||
+            relation.elderId !== input.elderId || relation.familyUserId !== input.requesterId ||
+            state.activeFamilyUserId !== input.requesterId) return null
+          const interpreted = interpretFamilyRequest(input)
+          const existing = Object.values(state.cases).find((careCase) => careCase.caseSource === 'FAMILY_REQUEST' &&
+            careCase.requesterId === input.requesterId && careCase.subjectElderId === input.elderId &&
+            careCase.requestSummary === interpreted.description &&
+            careCase.familyRequestType === (input.kind === 'OTHER' ? null : input.kind) && isActive(careCase))
+          if (existing) return existing.caseId
+          const now = new Date().toISOString()
+          const caseId = createServiceCaseId(state.cases)
+          const evaluation = interpreted.needsEvaluation
+          const careCase: CareCase = {
+            ...baseCase(caseId, input.requesterId, 'FAMILY', now),
+            subjectElderId: input.elderId, relationId: relation.relationId,
+            institutionId: elder.institutionId, requesterRelation: RELATIONSHIP_LABELS[relation.relationship],
+            caseType: evaluation ? 'EVALUATION' : 'FAMILY_REQUEST',
+            serviceType: input.kind === 'CONTACT_CHECK' ? 'CONTACT_CHECK' : input.kind === 'ITEM_HANDOVER' ? 'FAMILY_ITEM_HANDOVER' : null,
+            familyRequestType: input.kind === 'OTHER' ? null : input.kind,
+            requestType: input.kind === 'CONTACT_CHECK' ? 'UNREACHABLE_ELDER' : input.kind === 'ITEM_HANDOVER' ? 'ITEM_HANDOVER' : null,
+            title: input.kind === 'CONTACT_CHECK' ? '联系确认' : input.kind === 'ITEM_HANDOVER' ? '物品转交' : '其他需求待评估',
+            requestSummary: interpreted.description,
+            agentSummary: `请求人：${family.name}（${RELATIONSHIP_LABELS[relation.relationship]}）；服务对象：${elder.name}（${elder.elderId}）；${interpreted.agentSummary}`,
+            staffActionSummary: interpreted.staffActionSummary,
+            reasoningSummary: evaluation ? interpreted.evaluationReason : null,
+            priority: input.kind === 'CONTACT_CHECK' ? 'P0' : input.kind === 'ITEM_HANDOVER' ? 'P1' : 'P3',
+            itemName: input.kind === 'ITEM_HANDOVER' ? interpreted.itemName : null,
+            itemCategory: input.kind === 'ITEM_HANDOVER' ? interpreted.itemCategory : null,
+            itemType: input.kind === 'ITEM_HANDOVER' ? interpreted.itemCategory === 'MEDICATION' ? 'MEDICINE' : 'GENERAL' : null,
+            evaluationDecision: evaluation ? 'PENDING' : null,
+            timeline: [
+              { id: `${caseId}-timeline-1`, occurredAt: now, label: `家属提交：${interpreted.description}`, actorRole: 'FAMILY', statusAfter: 'WAITING' },
+              { id: `${caseId}-timeline-2`, occurredAt: now, label: evaluation ? '规则识别到需人工判断的需求，等待工作人员评估' : '本地 Demo 助手已整理需求，送达服务中心', actorRole: 'SYSTEM', statusAfter: 'WAITING' },
+            ],
+          }
+          set((current) => ({ cases: { ...current.cases, [caseId]: careCase } }))
+          return caseId
+        },
+        simulateSensorEvent: (elderId, scenario) => {
+          const state = get()
+          if (!state.elderProfiles[elderId]) return null
+          const { snapshot, alert } = simulateSensorReading(elderId, scenario)
+          if (!alert) {
+            set((current) => ({ sensorSnapshots: { ...current.sensorSnapshots, [elderId]: snapshot } }))
+            return null
+          }
+          const existing = Object.values(state.cases).find((careCase) => careCase.caseSource === 'WEARABLE_SENSOR' &&
+            careCase.subjectElderId === elderId && isActive(careCase) &&
+            (careCase.status === 'WAITING_FOR_REVIEW' || careCase.riskSignals?.includes(alert.text)))
+          if (existing) {
+            if (existing.riskSignals?.includes(alert.text)) {
+              set((current) => ({ sensorSnapshots: { ...current.sensorSnapshots, [elderId]: snapshot } }))
+              return existing.caseId
+            }
+            const now = new Date().toISOString()
+            const updated: CareCase = {
+              ...existing,
+              requestSummary: alert.text,
+              agentSummary: alert.text,
+              sensorEventType: scenario === 'NORMAL' ? undefined : scenario,
+              eventType: alert.riskType === 'FALL' ? 'FALL' : existing.eventType,
+              suggestedRiskType: alert.riskType === 'FALL' ? 'FALL' : existing.suggestedRiskType,
+              detectedRiskEvents: existing.detectedRiskEvents.includes(alert.riskType)
+                ? existing.detectedRiskEvents : [...existing.detectedRiskEvents, alert.riskType],
+              latestRiskEventType: alert.riskType,
+              riskSignals: [...(existing.riskSignals ?? []), alert.text],
+              updatedAt: now,
+              timeline: [...existing.timeline, {
+                id: `${existing.caseId}-timeline-${existing.timeline.length + 1}`, occurredAt: now,
+                label: `安序手表补充模拟事件：${alert.text}`, actorRole: 'SYSTEM', statusAfter: existing.status,
+              }],
+            }
+            set((current) => ({
+              cases: { ...current.cases, [existing.caseId]: updated },
+              sensorSnapshots: { ...current.sensorSnapshots, [elderId]: snapshot },
+            }))
+            return existing.caseId
+          }
+          const now = new Date().toISOString()
+          const careCase = createSafetyCase(state.cases, alert.text, alert.riskType, alert.text, 'ELDER', now)
+          careCase.caseSource = 'WEARABLE_SENSOR'
+          careCase.subjectElderId = elderId
+          careCase.requesterId = `DEVICE-ANXU-${elderId}`
+          careCase.requesterRole = undefined
+          careCase.sensorEventType = scenario === 'NORMAL' ? undefined : scenario
+          careCase.title = '安序手表设备预警'
+          careCase.agentSummary = alert.text
+          careCase.staffActionSummary = '立即人工确认设备提示和老人实际情况，再决定介入处理。'
+          careCase.reasoningSummary = 'Demo 设备模拟规则触发，读数仅供演示，不作医学诊断。'
+          careCase.timeline = [
+            { id: `${careCase.caseId}-timeline-1`, occurredAt: now, label: `安序手表模拟事件：${alert.text}`, actorRole: 'SYSTEM', statusAfter: 'WAITING_FOR_REVIEW' },
+            { id: `${careCase.caseId}-timeline-2`, occurredAt: now, label: 'P0 Safety Case 已建立，等待工作人员人工确认', actorRole: 'SYSTEM', statusAfter: 'WAITING_FOR_REVIEW' },
+          ]
+          set((current) => ({ cases: { ...current.cases, [careCase.caseId]: careCase }, sensorSnapshots: { ...current.sensorSnapshots, [elderId]: snapshot } }))
+          return careCase.caseId
+        },
+        resetSensorState: () => set({ sensorSnapshots: { E001: initialSensorSnapshot('E001') } }),
         completeFamilyRequest: (caseId, rawResolutionResult) => {
           const careCase = get().cases[caseId]
           const resolutionResult = rawResolutionResult.trim()
@@ -682,7 +822,7 @@ export const createDemoStore = (storageKey = DEMO_STORAGE_KEY) =>
             immediateIntervention: review.immediateIntervention,
             timeline: [...careCase.timeline, {
               id: `${caseId}-timeline-${careCase.timeline.length + 1}`, occurredAt: now,
-              label: `人工分类：${review.finalRiskType} · ${review.finalPriority}${review.finalPriority !== careCase.suggestedRiskLevel || review.finalRiskType !== careCase.suggestedRiskType ? '（已修改 AI 建议）' : '（接受 AI 建议）'}`,
+              label: `人工分类：${review.finalRiskType} · ${review.finalPriority}${review.finalPriority !== careCase.suggestedRiskLevel || review.finalRiskType !== careCase.suggestedRiskType ? '（已修改 ' : '（接受 '}${careCase.caseSource === 'WEARABLE_SENSOR' ? '设备规则提示' : 'AI 建议'}）`,
               actorRole: 'STAFF', statusAfter: 'WAITING_FOR_REVIEW',
             }],
           }
@@ -767,6 +907,7 @@ export const createDemoStore = (storageKey = DEMO_STORAGE_KEY) =>
           activeFamilyUserId,
           selectedFamilyElderId,
           conversationState,
+          sensorSnapshots,
           schemaVersion,
         }) => ({
           cases,
@@ -779,15 +920,29 @@ export const createDemoStore = (storageKey = DEMO_STORAGE_KEY) =>
           activeFamilyUserId,
           selectedFamilyElderId,
           conversationState,
+          sensorSnapshots,
           schemaVersion,
         }),
         migrate: (persistedState) => {
           const legacy = persistedState as Partial<DemoStateData>
+          const initial = createInitialState()
           return {
-            ...createInitialState(),
-            cases: legacy.cases ?? {},
+            ...initial,
+            cases: Object.fromEntries(Object.entries(legacy.cases ?? {}).map(([id, careCase]) => [id, {
+              ...careCase,
+              caseSource: careCase.caseSource ?? (careCase.requesterRole === 'FAMILY' ? 'FAMILY_REQUEST' : 'ELDER_INPUT'),
+            }])),
+            institutions: legacy.institutions ?? initial.institutions,
+            elderProfiles: legacy.elderProfiles ?? initial.elderProfiles,
+            familyProfiles: legacy.familyProfiles ?? initial.familyProfiles,
+            staffProfiles: legacy.staffProfiles ?? initial.staffProfiles,
+            elderFamilyRelations: legacy.elderFamilyRelations ?? initial.elderFamilyRelations,
             activeRole: legacy.activeRole ?? 'ELDER',
+            activeFamilyUserId: legacy.activeFamilyUserId ?? initial.activeFamilyUserId,
+            selectedFamilyElderId: legacy.selectedFamilyElderId ?? null,
             conversationState: legacy.conversationState ?? createInitialConversationState(),
+            sensorSnapshots: legacy.sensorSnapshots ?? { E001: initialSensorSnapshot('E001') },
+            schemaVersion: DEMO_SCHEMA_VERSION,
           }
         },
       },

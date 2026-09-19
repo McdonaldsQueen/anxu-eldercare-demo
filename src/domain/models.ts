@@ -1,4 +1,25 @@
 export type Role = 'ELDER' | 'FAMILY' | 'STAFF'
+export type CaseSource = 'ELDER_INPUT' | 'FAMILY_REQUEST' | 'WEARABLE_SENSOR'
+export type SensorScenario = 'NORMAL' | 'HIGH_HEART_RATE' | 'LOW_SPO2' | 'HIGH_TEMPERATURE' | 'FALL'
+
+export interface SensorSnapshot {
+  elderId: string
+  heartRate: number
+  spo2: number
+  temperature: number
+  location: string
+  fallDetected: boolean
+  deviceOnline: boolean
+  updatedAt: string
+}
+
+export interface FamilyNaturalRequestInput {
+  elderId: string
+  requesterId: string
+  relationId: string
+  kind: 'CONTACT_CHECK' | 'ITEM_HANDOVER' | 'OTHER'
+  description: string
+}
 
 /** Legacy values remain accepted so Phase 3.5 persisted fixtures migrate safely. */
 export type CaseType =
@@ -145,6 +166,10 @@ export interface TimelineEvent {
 
 export interface CareCase {
   caseId: string
+  caseSource: CaseSource
+  agentSummary?: string | null
+  staffActionSummary?: string | null
+  sensorEventType?: Exclude<SensorScenario, 'NORMAL'>
   subjectElderId: string
   requesterId: string
   requesterRole?: Extract<Role, 'ELDER' | 'FAMILY'>

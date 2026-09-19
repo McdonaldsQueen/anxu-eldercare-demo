@@ -3,7 +3,6 @@ import { useShallow } from 'zustand/react/shallow'
 import { CaseCard } from '../components/cases/CaseCard'
 import { AlertIcon, ClipboardIcon } from '../components/ui/Icons'
 import { Link } from 'react-router-dom'
-import { CONTACT_ROLE_LABELS, RELATIONSHIP_LABELS } from '../domain/identity'
 import { selectActiveCases, selectCompletedCases, selectWorkload, useDemoStore } from '../store/demoStore'
 
 export function StaffWorkbenchPage() {
@@ -11,14 +10,11 @@ export function StaffWorkbenchPage() {
   const activeCases = useDemoStore(useShallow(selectActiveCases))
   const completedCases = useDemoStore(useShallow(selectCompletedCases))
   const moveServiceCase = useDemoStore((state) => state.moveServiceCase)
-  const elderProfiles = useDemoStore((state) => state.elderProfiles)
-  const familyProfiles = useDemoStore((state) => state.familyProfiles)
-  const relations = useDemoStore((state) => state.elderFamilyRelations)
   const riskCases = activeCases.filter((careCase) => careCase.caseType === 'SAFETY')
   const unreviewedRiskCases = riskCases.filter((careCase) => careCase.status === 'WAITING_FOR_REVIEW')
   const confirmedRiskCases = riskCases.filter((careCase) => careCase.status !== 'WAITING_FOR_REVIEW')
-  const serviceCases = activeCases.filter((careCase) => ['SERVICE', 'MOBILITY'].includes(careCase.caseType))
-  const familyCases = activeCases.filter((careCase) => careCase.caseType === 'FAMILY_REQUEST')
+  const serviceCases = activeCases.filter((careCase) => ['SERVICE', 'MOBILITY'].includes(careCase.caseType) && careCase.caseSource === 'ELDER_INPUT')
+  const familyCases = activeCases.filter((careCase) => careCase.caseSource === 'FAMILY_REQUEST' && careCase.caseType !== 'EVALUATION')
   const evaluationCases = activeCases.filter((careCase) => careCase.caseType === 'EVALUATION')
 
   const stats = [
@@ -43,6 +39,7 @@ export function StaffWorkbenchPage() {
                 <CaseCard
                   key={careCase.caseId}
                   careCase={careCase}
+                  staffContext
                   detailHref={`/staff/tasks/${careCase.caseId}`}
                   detailLabel="立即处理 / 审核"
                 />
@@ -55,7 +52,7 @@ export function StaffWorkbenchPage() {
           <section className="p0-task-section" aria-label="已确认 Safety Case">
             <div className="p0-task-section__heading"><AlertIcon /><div><p className="eyebrow">人工已确认</p><h2>高优先级 Safety Case</h2></div></div>
             <div className="case-list">{confirmedRiskCases.map((careCase) => (
-              <CaseCard key={careCase.caseId} careCase={careCase} detailHref={`/staff/tasks/${careCase.caseId}`} detailLabel="继续处理" />
+              <CaseCard key={careCase.caseId} careCase={careCase} staffContext detailHref={`/staff/tasks/${careCase.caseId}`} detailLabel="继续处理" />
             ))}</div>
           </section>
         )}
@@ -76,6 +73,7 @@ export function StaffWorkbenchPage() {
                 <CaseCard
                   key={careCase.caseId}
                   careCase={careCase}
+                  staffContext
                   detailHref={`/staff/tasks/${careCase.caseId}`}
                   actionLabel={careCase.status === 'WAITING' ? '接单' : undefined}
                   onAction={careCase.status === 'WAITING' ? () => moveServiceCase(careCase.caseId, 'ACCEPTED') : undefined}
@@ -91,17 +89,7 @@ export function StaffWorkbenchPage() {
             <div className="section-title-row"><div><p className="eyebrow">家属需求</p><h2>Family Request</h2></div><span className="count-chip">{familyCases.length} 件</span></div>
             <div className="case-list">{familyCases.map((careCase) => (
               <div className="family-work-item" key={careCase.caseId}>
-                {(() => {
-                  const elder = elderProfiles[careCase.subjectElderId]
-                  const family = familyProfiles[careCase.requesterId]
-                  const relation = careCase.relationId ? relations[careCase.relationId] : undefined
-                  return <div className="family-work-context">
-                    <span>老人：<strong>{elder?.name ?? careCase.subjectElderId}</strong> · {careCase.subjectElderId}{elder ? ` · ${elder.room}房` : ''}</span>
-                    <span>请求人：<strong>{family?.name ?? careCase.requesterId}</strong>{relation ? ` · ${RELATIONSHIP_LABELS[relation.relationship]} · ${CONTACT_ROLE_LABELS[relation.contactRole]}` : ''}</span>
-                    <span>工作人员：<strong>陈静</strong></span>
-                  </div>
-                })()}
-                <CaseCard careCase={careCase} detailHref={`/staff/tasks/${careCase.caseId}`}
+                <CaseCard careCase={careCase} staffContext detailHref={`/staff/tasks/${careCase.caseId}`}
                   actionLabel={careCase.status === 'WAITING' ? '接单' : undefined}
                   onAction={careCase.status === 'WAITING' ? () => moveServiceCase(careCase.caseId, 'ACCEPTED') : undefined} />
               </div>
@@ -112,14 +100,14 @@ export function StaffWorkbenchPage() {
           <section className="panel task-panel task-panel--secondary">
             <div className="section-title-row"><div><p className="eyebrow">人工决策</p><h2>待评估需求</h2></div><span className="count-chip">{evaluationCases.length} 件</span></div>
             <div className="case-list">{evaluationCases.map((careCase) => (
-              <CaseCard key={careCase.caseId} careCase={careCase} detailHref={`/staff/tasks/${careCase.caseId}`} detailLabel="评估需求" />
+              <CaseCard key={careCase.caseId} careCase={careCase} staffContext detailHref={`/staff/tasks/${careCase.caseId}`} detailLabel="评估需求" />
             ))}</div>
           </section>
         )}
         {completedCases.length > 0 && (
           <section className="panel completed-task-panel">
             <div className="section-title-row"><div><p className="eyebrow">今日记录</p><h2>已完成</h2></div></div>
-            <div className="case-list">{completedCases.map((careCase) => <CaseCard key={careCase.caseId} careCase={careCase} detailHref={`/staff/tasks/${careCase.caseId}`} />)}</div>
+            <div className="case-list">{completedCases.map((careCase) => <CaseCard key={careCase.caseId} careCase={careCase} staffContext detailHref={`/staff/tasks/${careCase.caseId}`} />)}</div>
           </section>
         )}
       </div>

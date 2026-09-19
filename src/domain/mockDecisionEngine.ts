@@ -275,12 +275,15 @@ const serviceReply = (category?: ServiceCategory | null) => {
 export function decideElderInput(rawText: string, session: ConversationSession, cases: Record<string, CareCase>): ElderDecision {
   const text = rawText.trim()
   const riskClassification = classifyRiskEvent(text)
-  const activeSafetyCase = latestActiveCase(cases, (careCase) => careCase.caseType === 'SAFETY')
+  const activeSafetyCase = latestActiveCase(cases, (careCase) =>
+    careCase.caseType === 'SAFETY' && careCase.caseSource === 'ELDER_INPUT')
 
   // Deterministic Risk Override: only the current message can activate this branch.
   if (riskClassification) {
     const definition = RISK_CATALOG[riskClassification.eventType]
-    const isSameRiskThread = activeSafetyCase && ['COLLECTING_RISK', 'OPEN_RISK_DESCRIPTION', 'ACTIVE_RISK'].includes(session.conversationMode)
+    const isSameRiskThread = activeSafetyCase && (
+      activeSafetyCase.detectedRiskEvents.includes(riskClassification.eventType) ||
+      ['COLLECTING_RISK', 'OPEN_RISK_DESCRIPTION', 'ACTIVE_RISK'].includes(session.conversationMode))
     return {
       intent: 'HELP_REQUEST', risk: 'CRITICAL', information: 'COMPLETE',
       action: isSameRiskThread ? 'SUPPLEMENT_CASE' : 'ESCALATE',
@@ -533,7 +536,7 @@ export function decideFamilyInput(rawText: string, session: ConversationSession,
     return {
       intent: 'EVALUATION_REQUEST', risk: 'NORMAL', information: 'COMPLETE',
       action: 'CREATE_EVALUATION',
-      reply: '这不在家属端标准服务目录中，我已建立待评估需求，由工作人员决定是否承接。',
+      reply: '已整理您的需求并提交人工评估，由工作人员决定是否承接。',
       draft, riskEventType: null, targetCaseId: null,
       nextContext: makeContext(session, {
         currentIntent: 'EVALUATION_REQUEST', conversationMode: 'IDLE', lastAgentQuestion: null, activeCaseId: null,

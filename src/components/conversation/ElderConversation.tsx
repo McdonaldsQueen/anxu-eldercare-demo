@@ -21,6 +21,7 @@ import {
   type SyncedOpenhexHistory,
 } from '../../services/openhexHistorySync'
 import { getOpenhexToken, resetOpenhexTokenCache } from '../../services/openhexToken'
+import { DEMO_RESET_EVENT } from '../../services/demoReset'
 import { useDemoStore } from '../../store/demoStore'
 import { useDemoUiStore } from '../../store/demoUiStore'
 import { ArrowIcon, MicIcon, SparkIcon } from '../ui/Icons'
@@ -52,6 +53,7 @@ export function ElderConversation() {
   const existingAssistantIdsRef = useRef<Set<string>>(new Set())
   const reconciledTurnStartedAtRef = useRef<number | null>(null)
   const isRespondingRef = useRef(false)
+  const resetEpochRef = useRef(0)
   const experienceMode = useDemoUiStore((state) => state.experienceMode)
   const session = useDemoStore((state) => state.conversationState.elder)
   const submitElderMessage = useDemoStore((state) => state.submitElderMessage)
@@ -107,6 +109,25 @@ export function ElderConversation() {
   useEffect(() => () => recognitionRef.current?.stop(), [])
 
   useEffect(() => {
+    const clearConversation = () => {
+      resetEpochRef.current += 1
+      recognitionRef.current?.stop()
+      chat.clear()
+      setInput('')
+      setSendError(null)
+      setVoiceState('IDLE')
+      setVoiceMessage('')
+      setTransportConversationId(undefined)
+      setSyncedHistory(null)
+      turnStartedAtRef.current = null
+      reconciledTurnStartedAtRef.current = null
+      existingAssistantIdsRef.current.clear()
+    }
+    window.addEventListener(DEMO_RESET_EVENT, clearConversation)
+    return () => window.removeEventListener(DEMO_RESET_EVENT, clearConversation)
+  }, [chat.clear])
+
+  useEffect(() => {
     if (!chat.isResponding) {
       setElapsedSeconds(0)
       return
@@ -139,11 +160,12 @@ export function ElderConversation() {
 
     let stopped = false
     let timer: number | undefined
+    const resetEpoch = resetEpochRef.current
 
     const pollHistory = async () => {
       try {
         const history = await chatClient.messages(activeConversationId)
-        if (stopped) return
+        if (stopped || resetEpoch !== resetEpochRef.current) return
 
         if (historyHasCompletedTurn(history.entries, turnStartedAt)) {
           reconciledTurnStartedAtRef.current = turnStartedAt
@@ -165,7 +187,7 @@ export function ElderConversation() {
         // The diagnostic fetch records the failure; the active SSE remains primary.
       }
 
-      if (!stopped) timer = window.setTimeout(() => void pollHistory(), 2_000)
+      if (!stopped && resetEpoch === resetEpochRef.current) timer = window.setTimeout(() => void pollHistory(), 2_000)
     }
 
     void pollHistory()

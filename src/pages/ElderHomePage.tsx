@@ -2,6 +2,7 @@ import { AppShell } from '../components/layout/AppShell'
 import { useShallow } from 'zustand/react/shallow'
 import { CaseCard } from '../components/cases/CaseCard'
 import { ElderConversation } from '../components/conversation/ElderConversation'
+import { ElderWearable } from '../components/sensor/ElderWearable'
 import { CheckIcon } from '../components/ui/Icons'
 import { DAILY_ACTIVITIES } from '../data/mockData'
 import { selectActiveCases, selectCompletedCases, useDemoStore } from '../store/demoStore'
@@ -21,6 +22,7 @@ export function ElderHomePage() {
         <section className="request-box" aria-label="需求输入入口">
           <ElderConversation />
         </section>
+        <ElderWearable elderId="E001" />
 
         <section className="content-section">
           <div className="section-title-row">

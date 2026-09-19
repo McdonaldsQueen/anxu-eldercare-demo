@@ -1,0 +1,10 @@
+{
+  "rewrites": [
+    { "source": "/elder", "destination": "/index.html" },
+    { "source": "/elder/:path*", "destination": "/index.html" },
+    { "source": "/family", "destination": "/index.html" },
+    { "source": "/family/:path*", "destination": "/index.html" },
+    { "source": "/staff", "destination": "/index.html" },
+    { "source": "/staff/:path*", "destination": "/index.html" }
+  ]
+}

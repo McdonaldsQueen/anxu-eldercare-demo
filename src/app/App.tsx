@@ -1,5 +1,5 @@
 import { useLayoutEffect, type ReactNode } from 'react'
-import { HashRouter, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import type { Role } from '../domain/models'
 import { ElderHomePage } from '../pages/ElderHomePage'
 import { CaseDetailPage } from '../pages/CaseDetailPage'
@@ -25,7 +25,7 @@ function RoleRoute({ role, children }: { role: Role; children: ReactNode }) {
 
 export function App() {
   return (
-    <HashRouter>
+    <BrowserRouter basename={import.meta.env.BASE_URL}>
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/elder" element={<RoleRoute role="ELDER"><ElderHomePage /></RoleRoute>} />
@@ -39,6 +39,6 @@ export function App() {
         <Route path="/staff/tasks/:caseId" element={<RoleRoute role="STAFF"><StaffTaskDetailPage /></RoleRoute>} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
-    </HashRouter>
+    </BrowserRouter>
   )
 }

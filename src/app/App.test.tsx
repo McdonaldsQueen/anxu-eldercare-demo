@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 import { useDemoStore } from '../store/demoStore'
 import { useDemoUiStore } from '../store/demoUiStore'
+import { OPENHEX_CONVERSATION_STORAGE_KEY } from '../services/demoReset'
+import { getOpenhexDiagnostics, recordOpenhexDiagnostic } from '../services/openhexDiagnostics'
 import type {
   SpeechRecognitionErrorEventLike,
   SpeechRecognitionResultEventLike,
@@ -13,6 +15,7 @@ const openhexMock = vi.hoisted(() => ({
   history: vi.fn(),
   retry: vi.fn(),
   interrupt: vi.fn(),
+  clear: vi.fn(),
   lastOptions: null as Record<string, unknown> | null,
 }))
 
@@ -69,6 +72,14 @@ vi.mock('@openhex-ai/agent-sdk/react', async () => {
         setMessages((current) => current.filter((message) => !(message.role === 'assistant' && message.pending)))
       }, [])
 
+      const clear = React.useCallback(() => {
+        openhexMock.clear()
+        setMessages([])
+        setError(null)
+        setIsResponding(false)
+        localStorage.removeItem('ohx:convo:anxu-eldercare-agent-chat')
+      }, [])
+
       return {
         messages,
         status: error ? 'error' : isResponding ? 'streaming' : 'idle',
@@ -85,14 +96,17 @@ vi.mock('@openhex-ai/agent-sdk/react', async () => {
         downloadAttachment: vi.fn(),
         interrupt,
         retry: openhexMock.retry,
-        clear: vi.fn(),
+        clear,
       }
     },
   }
 })
 
 describe('Phase 1 and Phase 2 routes and interactions', () => {
-  afterEach(cleanup)
+  afterEach(() => {
+    cleanup()
+    vi.unstubAllGlobals()
+  })
 
   beforeEach(() => {
     openhexMock.send.mockReset()
@@ -101,13 +115,14 @@ describe('Phase 1 and Phase 2 routes and interactions', () => {
     openhexMock.history.mockResolvedValue({ entries: [], hasMore: false })
     openhexMock.retry.mockReset()
     openhexMock.interrupt.mockReset()
+    openhexMock.clear.mockReset()
     openhexMock.lastOptions = null
     vi.unstubAllEnvs()
     localStorage.clear()
     sessionStorage.clear()
     useDemoStore.getState().resetDemo()
     useDemoUiStore.getState().setExperienceMode('OPENHEX')
-    window.location.hash = '#/'
+    window.history.replaceState(null, '', '/')
     Object.defineProperty(window, 'SpeechRecognition', { value: undefined, configurable: true, writable: true })
     Object.defineProperty(window, 'webkitSpeechRecognition', { value: undefined, configurable: true, writable: true })
   })
@@ -115,7 +130,7 @@ describe('Phase 1 and Phase 2 routes and interactions', () => {
   it('enters the elder home and switches between all three role homes', async () => {
     render(<App />)
 
-    fireEvent.click(screen.getByRole('button', { name: '开始体验' }))
+    fireEvent.click(screen.getByRole('link', { name: /老人端/ }))
     expect(await screen.findByRole('heading', { name: /今天有什么需要/ })).toBeInTheDocument()
     expect(useDemoStore.getState().activeRole).toBe('ELDER')
     expect(openhexMock.send).not.toHaveBeenCalled()
@@ -135,7 +150,7 @@ describe('Phase 1 and Phase 2 routes and interactions', () => {
   })
 
   it('renders all workload numbers from the empty shared store', async () => {
-    window.location.hash = '#/staff'
+    window.history.replaceState(null, '', '/staff')
     render(<App />)
 
     const stats = await screen.findByLabelText('工作台统计')
@@ -145,23 +160,101 @@ describe('Phase 1 and Phase 2 routes and interactions', () => {
   })
 
   it('requires confirmation, resets the store, and returns to the landing page', async () => {
-    window.location.hash = '#/family'
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ reset: true })))
+    window.history.replaceState(null, '', '/family')
     useDemoStore.getState().setActiveRole('FAMILY')
     render(<App />)
 
     fireEvent.click(await screen.findByRole('button', { name: /演示工具/ }))
-    fireEvent.click(screen.getByRole('button', { name: '重置 Case 演示' }))
-    expect(screen.getByText('重置 Mock Case？')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '重置演示' }))
+    expect(screen.getByText('重置后将清除当前对话、工单和演示进度，并恢复初始状态。')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '重置 Case 演示' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '重置完整演示' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '确认重置' }))
 
-    await waitFor(() => expect(window.location.hash).toBe('#/'))
+    await waitFor(() => expect(window.location.pathname).toBe('/'))
     expect(screen.getByRole('heading', { name: /需要帮助的时候/ })).toBeInTheDocument()
     expect(useDemoStore.getState().activeRole).toBe('ELDER')
     expect(useDemoStore.getState().cases).toEqual({})
   })
 
+  it('uses the concept home as the three role entry and keeps cases across routes', async () => {
+    render(<App />)
+    expect(screen.getByRole('heading', { name: /需要帮助的时候/ })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('link', { name: /老人端/ }))
+    expect(await screen.findByRole('heading', { name: /今天有什么需要/ })).toBeInTheDocument()
+    expect(window.location.pathname).toBe('/elder')
+    useDemoStore.getState().submitElderMessage('我想洗澡，需要人帮一下')
+    const caseIds = Object.keys(useDemoStore.getState().cases)
+    fireEvent.click(screen.getByRole('link', { name: '返回安序智护概念首页' }))
+    expect(window.location.pathname).toBe('/')
+    fireEvent.click(screen.getByRole('link', { name: /家属端/ }))
+    expect(await screen.findByRole('heading', { name: '我的家人' })).toBeInTheDocument()
+    expect(useDemoStore.getState().activeRole).toBe('FAMILY')
+    fireEvent.click(screen.getByRole('link', { name: '返回安序智护概念首页' }))
+    fireEvent.click(screen.getByRole('link', { name: /工作人员端/ }))
+    expect(await screen.findByRole('heading', { name: '服务工作台' })).toBeInTheDocument()
+    expect(useDemoStore.getState().activeRole).toBe('STAFF')
+    expect(Object.keys(useDemoStore.getState().cases)).toEqual(caseIds)
+    fireEvent.click(screen.getByRole('link', { name: '返回安序智护概念首页' }))
+    expect(window.location.pathname).toBe('/')
+  })
+
+  it.each([
+    ['/elder', 'ELDER', /今天有什么需要/],
+    ['/family', 'FAMILY', /我的家人/],
+    ['/staff', 'STAFF', /服务工作台/],
+  ] as const)('opens %s directly and preserves its route after remount', async (path, role, heading) => {
+    window.history.replaceState(null, '', path)
+    const view = render(<App />)
+    expect(await screen.findByRole('heading', { name: heading })).toBeInTheDocument()
+    expect(useDemoStore.getState().activeRole).toBe(role)
+    view.unmount()
+    render(<App />)
+    expect(await screen.findByRole('heading', { name: heading })).toBeInTheDocument()
+    expect(window.location.pathname).toBe(path)
+  })
+
+  it('forgets a completed Case and an OpenHex conversation after reset and remount', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ reset: true })))
+    window.history.replaceState(null, '', '/elder')
+    const view = render(<App />)
+    const input = await screen.findByLabelText('告诉安序智护您的需要')
+    fireEvent.change(input, { target: { value: '今天过得好吗？' } })
+    fireEvent.click(screen.getByRole('button', { name: '发送' }))
+    expect(await screen.findByText('这是来自 OpenHex Agent 的回复。')).toBeInTheDocument()
+
+    useDemoStore.getState().submitElderMessage('我明天下午要去医院，但是没人陪我。')
+    useDemoStore.getState().submitElderMessage('朝阳医院，下午两点半。')
+    useDemoStore.getState().setActiveRole('STAFF')
+    useDemoStore.getState().moveServiceCase('CASE-001', 'ACCEPTED')
+    useDemoStore.getState().moveServiceCase('CASE-001', 'IN_PROGRESS')
+    useDemoStore.getState().moveServiceCase('CASE-001', 'COMPLETED')
+    localStorage.setItem(OPENHEX_CONVERSATION_STORAGE_KEY, 'test-conversation')
+    recordOpenhexDiagnostic({ phase: 'conversation', outcome: 'success', conversationSuffix: 'old-id' })
+    useDemoUiStore.getState().setExperienceMode('PHASE4')
+
+    fireEvent.click(screen.getByRole('button', { name: /演示工具/ }))
+    fireEvent.click(screen.getByRole('button', { name: '重置演示' }))
+    fireEvent.click(screen.getByRole('button', { name: '确认重置' }))
+
+    await waitFor(() => expect(window.location.pathname).toBe('/'))
+    expect(openhexMock.clear).toHaveBeenCalledOnce()
+    expect(localStorage.getItem(OPENHEX_CONVERSATION_STORAGE_KEY)).toBeNull()
+    expect(getOpenhexDiagnostics()).toEqual([])
+    expect(useDemoStore.getState().cases).toEqual({})
+    expect(useDemoUiStore.getState().experienceMode).toBe('OPENHEX')
+
+    view.unmount()
+    render(<App />)
+    fireEvent.click(screen.getByRole('link', { name: /老人端/ }))
+    expect(await screen.findByLabelText('告诉安序智护您的需要')).toBeInTheDocument()
+    expect(screen.queryByText('这是来自 OpenHex Agent 的回复。')).not.toBeInTheDocument()
+    expect(screen.queryByText('明日', { exact: false })).not.toBeInTheDocument()
+  })
+
   it('provides a working recovery link for unknown routes', async () => {
-    window.location.hash = '#/missing-page'
+    window.history.replaceState(null, '', '/missing-page')
     render(<App />)
 
     expect(await screen.findByText('页面没有找到')).toBeInTheDocument()
@@ -170,7 +263,7 @@ describe('Phase 1 and Phase 2 routes and interactions', () => {
   })
 
   it('sends keyboard input to OpenHex without mutating the Mock Case store', async () => {
-    window.location.hash = '#/elder'
+    window.history.replaceState(null, '', '/elder')
     render(<App />)
 
     const input = await screen.findByLabelText('告诉安序智护您的需要')
@@ -204,7 +297,7 @@ describe('Phase 1 and Phase 2 routes and interactions', () => {
 
   it('accepts a valid OpenHex idle timeout override', async () => {
     vi.stubEnv('VITE_OPENHEX_IDLE_TIMEOUT_MS', '420000')
-    window.location.hash = '#/elder'
+    window.history.replaceState(null, '', '/elder')
 
     render(<App />)
 
@@ -213,7 +306,7 @@ describe('Phase 1 and Phase 2 routes and interactions', () => {
   })
 
   it('creates both Mock Case paths only through their explicit demo buttons', async () => {
-    window.location.hash = '#/elder'
+    window.history.replaceState(null, '', '/elder')
     render(<App />)
 
     fireEvent.click(await screen.findByRole('button', { name: /演示工具/ }))
@@ -238,7 +331,7 @@ describe('Phase 1 and Phase 2 routes and interactions', () => {
     openhexMock.send.mockImplementationOnce(() => new Promise<string>((_resolve, reject) => {
       rejectTurn = reject
     }))
-    window.location.hash = '#/elder'
+    window.history.replaceState(null, '', '/elder')
     render(<App />)
 
     const input = await screen.findByLabelText('告诉安序智护您的需要')
@@ -263,7 +356,7 @@ describe('Phase 1 and Phase 2 routes and interactions', () => {
     const timeoutError = new Error('idle timeout')
     timeoutError.name = 'AbortError'
     openhexMock.send.mockRejectedValueOnce(timeoutError)
-    window.location.hash = '#/elder'
+    window.history.replaceState(null, '', '/elder')
     render(<App />)
 
     const input = await screen.findByLabelText('告诉安序智护您的需要')
@@ -305,7 +398,7 @@ describe('Phase 1 and Phase 2 routes and interactions', () => {
         },
       ],
     })
-    window.location.hash = '#/elder'
+    window.history.replaceState(null, '', '/elder')
     render(<App />)
 
     const input = await screen.findByLabelText('告诉安序智护您的需要')
@@ -321,7 +414,7 @@ describe('Phase 1 and Phase 2 routes and interactions', () => {
   it('completes the shared staff workflow and exposes the resolved state', async () => {
     useDemoStore.getState().submitElderMessage('我明天下午要去医院，但是没人陪我。')
     useDemoStore.getState().submitElderMessage('朝阳医院，下午两点半。')
-    window.location.hash = '#/staff'
+    window.history.replaceState(null, '', '/staff')
     render(<App />)
 
     fireEvent.click(await screen.findByRole('button', { name: '接单' }))
@@ -344,7 +437,7 @@ describe('Phase 1 and Phase 2 routes and interactions', () => {
   })
 
   it('shows the staff elder archive with both verified family relationships', async () => {
-    window.location.hash = '#/staff/elders'
+    window.history.replaceState(null, '', '/staff/elders')
     render(<App />)
 
     expect(await screen.findByRole('heading', { name: '老人档案' })).toBeInTheDocument()
@@ -358,7 +451,7 @@ describe('Phase 1 and Phase 2 routes and interactions', () => {
 
   it('runs the complete staff invitation to family request golden path', async () => {
     useDemoStore.getState().resetGoldenPathDemo()
-    window.location.hash = '#/staff/elders'
+    window.history.replaceState(null, '', '/staff/elders')
     render(<App />)
 
     fireEvent.click(await screen.findByRole('link', { name: '管理家属' }))
@@ -377,10 +470,9 @@ describe('Phase 1 and Phase 2 routes and interactions', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: '进入' }))
     expect(await screen.findByRole('heading', { name: '王秀兰今天' })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /联系不上老人/ }))
-    fireEvent.change(screen.getByLabelText('最后一次联系时间'), { target: { value: '2026-09-16T09:00' } })
-    fireEvent.change(screen.getByLabelText('已尝试联系次数'), { target: { value: '3' } })
-    fireEvent.click(screen.getByRole('button', { name: '提交联系确认' }))
+    fireEvent.click(screen.getByRole('button', { name: /联系确认/ }))
+    fireEvent.change(screen.getByLabelText('请描述主要问题'), { target: { value: '上午联系三次未果，请确认老人情况' } })
+    fireEvent.click(screen.getByRole('button', { name: '提交需求' }))
     expect(useDemoStore.getState().cases['CASE-001']).toMatchObject({
       requestType: 'UNREACHABLE_ELDER', subjectElderId: 'E001', requesterId: 'F001',
       relationId: pendingRelation!.relationId, institutionId: 'I001', priority: 'P0',
@@ -391,7 +483,6 @@ describe('Phase 1 and Phase 2 routes and interactions', () => {
     expect(familyRequestSection.closest('section')).toHaveTextContent('王秀兰')
     expect(familyRequestSection.closest('section')).toHaveTextContent('李晓雯')
     expect(familyRequestSection.closest('section')).toHaveTextContent('女儿')
-    expect(familyRequestSection.closest('section')).toHaveTextContent('主要联系人')
     fireEvent.click(screen.getByRole('button', { name: '接单' }))
     fireEvent.click(screen.getByRole('link', { name: /查看详情/ }))
     fireEvent.click(await screen.findByRole('button', { name: '开始服务' }))
@@ -408,14 +499,13 @@ describe('Phase 1 and Phase 2 routes and interactions', () => {
   })
 
   it('runs a family contact request through staff result feedback', async () => {
-    window.location.hash = '#/family'
+    window.history.replaceState(null, '', '/family')
     render(<App />)
 
     fireEvent.click(await screen.findByRole('button', { name: '进入' }))
-    fireEvent.click(await screen.findByRole('button', { name: /联系不上老人/ }))
-    fireEvent.change(screen.getByLabelText('最后一次联系时间'), { target: { value: '2026-09-16T09:00' } })
-    fireEvent.change(screen.getByLabelText('已尝试联系次数'), { target: { value: '3' } })
-    fireEvent.click(screen.getByRole('button', { name: '提交联系确认' }))
+    fireEvent.click(await screen.findByRole('button', { name: /联系确认/ }))
+    fireEvent.change(screen.getByLabelText('请描述主要问题'), { target: { value: '上午联系三次未果，请确认老人情况' } })
+    fireEvent.click(screen.getByRole('button', { name: '提交需求' }))
     expect(useDemoStore.getState().cases['CASE-001']).toMatchObject({
       caseType: 'FAMILY_REQUEST',
       priority: 'P0',
@@ -443,7 +533,7 @@ describe('Phase 1 and Phase 2 routes and interactions', () => {
   })
 
   it('runs the P0 fall flow through elder, family, and staff views', async () => {
-    window.location.hash = '#/elder'
+    window.history.replaceState(null, '', '/elder')
     render(<App />)
 
     fireEvent.click(await screen.findByRole('button', { name: /演示工具/ }))
@@ -493,6 +583,25 @@ describe('Phase 1 and Phase 2 routes and interactions', () => {
     expect(await screen.findByText('CASE RESOLVED')).toBeInTheDocument()
   })
 
+  it('shows the elder summary and wearable origin without implying an elder report', async () => {
+    useDemoStore.getState().submitElderMessage('我明天下午要去医院，但是没人陪我。')
+    useDemoStore.getState().submitElderMessage('朝阳医院，下午两点半。')
+    const sensorId = useDemoStore.getState().simulateSensorEvent('E001', 'FALL')!
+    window.history.replaceState(null, '', '/staff')
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: '服务工作台' })).toBeInTheDocument()
+    expect(screen.getByText(/需求整理：老人需要陪诊/)).toBeInTheDocument()
+    const sensorLink = screen.getByRole('link', { name: /立即处理 \/ 审核/ })
+    expect(sensorLink.closest('article')).toHaveTextContent('设备预警')
+    expect(sensorLink.closest('article')).toHaveTextContent('安序手表检测到疑似跌倒')
+    fireEvent.click(sensorLink)
+    expect(await screen.findByText('设备规则提示，待确认', { exact: false })).toBeInTheDocument()
+    expect(screen.queryByText('老人已提交风险情况')).not.toBeInTheDocument()
+    expect(screen.queryByText('老人表示无法自行起身')).not.toBeInTheDocument()
+    expect(useDemoStore.getState().cases[sensorId].requesterId).toBe('DEVICE-ANXU-E001')
+  })
+
   it('puts a voice transcript into the same editable input and waits for explicit send', async () => {
     let recognition: MockSpeechRecognition | null = null
     class MockSpeechRecognition {
@@ -515,7 +624,7 @@ describe('Phase 1 and Phase 2 routes and interactions', () => {
       },
       configurable: true,
     })
-    window.location.hash = '#/elder'
+    window.history.replaceState(null, '', '/elder')
     render(<App />)
 
     fireEvent.click(await screen.findByRole('button', { name: '开始语音输入' }))
@@ -552,7 +661,7 @@ describe('Phase 1 and Phase 2 routes and interactions', () => {
       },
       configurable: true,
     })
-    window.location.hash = '#/elder'
+    window.history.replaceState(null, '', '/elder')
     render(<App />)
 
     fireEvent.click(await screen.findByRole('button', { name: '开始语音输入' }))
@@ -567,7 +676,7 @@ describe('Phase 1 and Phase 2 routes and interactions', () => {
   })
 
   it('renders event-specific risk follow-up options', async () => {
-    window.location.hash = '#/elder'
+    window.history.replaceState(null, '', '/elder')
     useDemoUiStore.getState().setExperienceMode('PHASE4')
     useDemoStore.getState().submitElderMessage('我现在喘不上气')
     render(<App />)

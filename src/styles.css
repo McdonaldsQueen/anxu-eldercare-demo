@@ -206,14 +206,14 @@ button:disabled { cursor: not-allowed; }
 .family-assistant-panel > p:not(.eyebrow) { margin: 0 0 22px; color: var(--muted); font-size: 14px; line-height: 1.7; }
 .query-preview { padding: 8px 8px 8px 13px; display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid rgba(40,106,88,.12); border-radius: 12px; color: #87938c; background: rgba(255,255,255,.7); font-size: 13px; }
 .family-conversation { width: 100%; }
-.family-request-actions { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+.family-request-actions { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; }
 .family-request-actions > button { padding: 15px; display: grid; gap: 6px; border: 1px solid #cad8ce; border-radius: 14px; color: var(--ink); background: rgba(255,255,255,.82); text-align: left; cursor: pointer; }
 .family-request-actions > button:hover, .family-request-actions > button.is-active { border-color: var(--green); box-shadow: 0 8px 22px rgba(40,106,88,.1); }
 .family-request-actions strong { font-size: 15px; }
 .family-request-actions span { color: var(--muted); font-size: 12px; line-height: 1.45; }
 .family-request-success { margin: 12px 0 0; padding: 12px; border: 1px solid #bfd6c5; border-radius: 11px; color: var(--green-dark); background: #f1f8f2; font-size: 13px; line-height: 1.5; }
 .family-request-form { margin-top: 14px; padding: 16px; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; border: 1px solid #cad8ce; border-radius: 15px; background: rgba(255,255,255,.88); }
-.family-form-heading, .family-request-form > label:has(textarea), .medication-fields, .medication-boundary, .family-form-actions { grid-column: 1 / -1; }
+.family-form-heading, .family-request-form > p, .family-request-form > label:has(textarea), .medication-fields, .medication-boundary, .family-form-actions { grid-column: 1 / -1; }
 .family-form-heading { display: grid; gap: 4px; }
 .family-form-heading span, .medication-fields small, .medication-boundary { color: var(--muted); font-size: 12px; line-height: 1.5; }
 .family-request-form label, .medication-fields label { display: grid; gap: 6px; color: #526159; font-size: 12px; font-weight: 600; }
@@ -377,7 +377,7 @@ button:disabled { cursor: not-allowed; }
 @media (max-width: 620px) {
   .landing-nav, .landing-main, .app-header, .app-footer, .page-content, .page-content--narrow { width: min(100% - 28px,1180px); }
   .landing-nav, .app-header { height: 72px; }
-  .mock-pill, .brand--compact > span:last-child, .role-switcher > span { display: none; }
+  .mock-pill { display: none; }
   .role-switcher select { min-width: 160px; }
   .hero { gap: 35px; padding: 48px 0; }
   .hero h1 { font-size: 38px; }
@@ -407,3 +407,14 @@ button:disabled { cursor: not-allowed; }
   .app-footer { align-items: flex-start; gap: 15px; }
   .reset-confirm { flex-wrap: wrap; justify-content: flex-end; }
 }
+.wearable-panel { margin: 24px 0; padding: 24px; }
+.wearable-readings { display: flex; flex-wrap: wrap; gap: 12px; margin: 18px 0; }
+.wearable-readings span { border: 1px solid var(--border, #e6e8e5); border-radius: 12px; padding: 10px 14px; color: #52605a; }
+.wearable-readings strong { color: #203b34; }
+.wearable-demo-controls, .family-option-help { margin-top: 14px; color: #52605a; }
+.wearable-demo-controls summary, .family-option-help summary { cursor: pointer; }
+.wearable-demo-controls button { margin: 6px 8px 0 0; padding: 8px 12px; border: 1px solid #d9e2db; border-radius: 9px; background: #fff; color: #31584c; cursor: pointer; }
+.staff-case-context { display: flex; flex-wrap: wrap; gap: 5px 12px; margin-bottom: 8px; font-size: 13px; color: #596c64; }
+.staff-case-context strong { color: #265d4c; }
+.staff-case-action { color: #31584c; }
+.staff-case-meta { font-size: 12px; color: #69766f; }

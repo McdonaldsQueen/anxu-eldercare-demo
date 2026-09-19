@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { RISK_CATALOG } from '../../domain/riskCatalog'
 import { AlertIcon, ArrowIcon, ClipboardIcon } from '../ui/Icons'
 import { useDemoStore } from '../../store/demoStore'
+import { RELATIONSHIP_LABELS } from '../../domain/identity'
 
 const SERVICE_STATUS_LABELS: Record<CareCase['status'], string> = {
   WAITING: '正在安排工作人员',
@@ -37,6 +38,7 @@ interface CaseCardProps {
   actionLabel?: string
   onAction?: () => void
   detailLabel?: string
+  staffContext?: boolean
 }
 
 export function CaseCard({
@@ -45,8 +47,11 @@ export function CaseCard({
   actionLabel,
   onAction,
   detailLabel = '查看详情',
+  staffContext = false,
 }: CaseCardProps) {
   const elder = useDemoStore((state) => state.elderProfiles[careCase.subjectElderId])
+  const family = useDemoStore((state) => state.familyProfiles[careCase.requesterId])
+  const relation = useDemoStore((state) => careCase.relationId ? state.elderFamilyRelations[careCase.relationId] : undefined)
   const isRisk = careCase.caseType === 'SAFETY'
   const isFamilyRequest = careCase.caseType === 'FAMILY_REQUEST'
   const displayedRiskType = careCase.finalRiskType ?? careCase.eventType
@@ -61,7 +66,7 @@ export function CaseCard({
     ? careCase.status === 'COMPLETED'
       ? careCase.safetyReviewOutcome === 'FALSE_POSITIVE' ? '人工审核 · 非 Safety Case' : '风险事件已处理'
       : careCase.status === 'WAITING_FOR_REVIEW'
-        ? `${careCase.suggestedRiskLevel ?? 'P0'} · AI 建议，待人工审核`
+        ? `${careCase.suggestedRiskLevel ?? 'P0'} · ${careCase.caseSource === 'WEARABLE_SENSOR' ? '设备规则提示' : 'AI 建议'}，待人工审核`
         : `${careCase.finalPriority ?? careCase.priority} · 人工已确认`
     : careCase.status === 'COMPLETED'
       ? '事情已解决'
@@ -72,14 +77,25 @@ export function CaseCard({
         {isRisk ? <AlertIcon /> : <ClipboardIcon />}
       </span>
       <div className="case-card__body">
+        {staffContext && <div className="staff-case-context">
+          <strong>{careCase.caseSource === 'WEARABLE_SENSOR' ? '设备预警' : careCase.caseSource === 'FAMILY_REQUEST' ? '家属需求' : '老人需求'}</strong>
+          <span>{careCase.caseSource === 'FAMILY_REQUEST' ? `${family?.name ?? careCase.requesterId}${relation ? ` · ${RELATIONSHIP_LABELS[relation.relationship]}` : ''} · 为${elder?.name ?? careCase.subjectElderId}提出` : `${elder?.name ?? careCase.subjectElderId} · ${careCase.subjectElderId}${elder ? ` · ${elder.room}房` : ''}`}</span>
+          <span>请求人：{careCase.caseSource === 'WEARABLE_SENSOR' ? '安序手表' : careCase.caseSource === 'FAMILY_REQUEST' ? family?.name ?? careCase.requesterId : elder?.name ?? careCase.requesterId}</span>
+          <span>服务对象：{elder?.name ?? careCase.subjectElderId} · {careCase.subjectElderId}</span>
+        </div>}
         <p className="eyebrow">{eyebrow}</p>
         <h3>{isRisk ? riskDefinition?.caseTitle : title}</h3>
-        {isRisk && <p>{careCase.selfHandling === 'UNABLE' ? `${elder?.name ?? careCase.subjectElderId}当前无法自行起身` : `${elder?.name ?? careCase.subjectElderId}报告${riskDefinition?.label ?? '安全风险'}`}</p>}
+        {isRisk && <p>{careCase.caseSource === 'WEARABLE_SENSOR' ? careCase.requestSummary : careCase.selfHandling === 'UNABLE' ? `${elder?.name ?? careCase.subjectElderId}当前无法自行起身` : `${elder?.name ?? careCase.subjectElderId}报告${riskDefinition?.label ?? '安全风险'}`}</p>}
         {careCase.hospital && (
           <p>{careCase.hospital} · {careCase.appointmentTime?.replace('明日 ', '')}</p>
         )}
         {!isRisk && !careCase.hospital && careCase.requestSummary && <p>{careCase.requestSummary}</p>}
-        {careCase.caseType === 'EVALUATION' && <p>等待工作人员评估是否承接</p>}
+        {staffContext && careCase.caseSource === 'ELDER_INPUT' && careCase.agentSummary && <p>需求整理：{careCase.agentSummary}</p>}
+        {staffContext && <p className="staff-case-action"><strong>现在需要：</strong>{careCase.staffActionSummary ?? (isRisk ? '人工确认风险，再决定介入。' : careCase.caseType === 'EVALUATION' ? '判断是否承接需求。' : '核对需求并安排处理。')}</p>}
+        {staffContext && careCase.caseType === 'EVALUATION' && <p>整理：{careCase.agentSummary ?? careCase.requestSummary} · 人工判断：{careCase.reasoningSummary ?? '需工作人员确认服务范围'}</p>}
+        {staffContext && <p className="staff-case-meta">{careCase.title ?? '服务需求'} · {careCase.finalPriority ?? careCase.priority} · {careCase.status}</p>}
+        {careCase.caseType === 'EVALUATION' && careCase.status === 'WAITING' && <p>等待工作人员评估是否承接</p>}
+        {careCase.status === 'DECLINED' && careCase.evaluationReason && <p>暂不承接原因：{careCase.evaluationReason}</p>}
         <p className="case-card__status">{careCase.caseType === 'EVALUATION' && careCase.status === 'WAITING'
           ? '等待工作人员评估'
           : isRisk ? SAFETY_STATUS_LABELS[careCase.status] : isFamilyRequest ? FAMILY_STATUS_LABELS[careCase.status] : SERVICE_STATUS_LABELS[careCase.status]}</p>

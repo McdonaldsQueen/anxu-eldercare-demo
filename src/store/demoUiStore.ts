@@ -5,13 +5,15 @@ export type ExperienceMode = 'OPENHEX' | 'PHASE4'
 interface DemoUiStore {
   experienceMode: ExperienceMode
   setExperienceMode: (mode: ExperienceMode) => void
+  resetExperienceMode: () => void
 }
 
-const defaultMode: ExperienceMode = import.meta.env.VITE_OPENHEX_AGENT_ID?.trim()
+export const defaultExperienceMode = (): ExperienceMode => import.meta.env.VITE_OPENHEX_AGENT_ID?.trim()
   ? 'OPENHEX'
   : 'PHASE4'
 
 export const useDemoUiStore = create<DemoUiStore>((set) => ({
-  experienceMode: defaultMode,
+  experienceMode: defaultExperienceMode(),
   setExperienceMode: (experienceMode) => set({ experienceMode }),
+  resetExperienceMode: () => set({ experienceMode: defaultExperienceMode() }),
 }))

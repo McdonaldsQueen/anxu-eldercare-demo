@@ -65,6 +65,8 @@ sequenceDiagram
 | 稳定访客身份 | Vercel Function | HttpOnly `ohx_ref` Cookie |
 | 短时令牌缓存 | `openhexToken` 模块 | 内存，过期前 60 秒刷新 |
 
+全局重置由 `demoReset` 协调：清空共享业务 Store、UI 模式、SDK 对话和历史缓存、令牌缓存、诊断与预留的传感器状态，并通过同源 `POST /api/openhex/demo-reset` 使 HttpOnly 访客 Cookie 过期。静态预览中该接口不可用时，本地对话仍会清空并从新会话开始。
+
 ## 视觉架构
 
 `src/styles.css` 保留原有组件结构规则；`src/styles/tokens.css` 定义颜色、字体、间距、圆角和层级；`src/styles/redesign.css` 负责新版页面布局、角色层次、响应式和交互状态。新样式不得绕过设计令牌新增随机颜色或阴影。

@@ -16,7 +16,7 @@
 - `src/store/demoStore.ts`：Mock Case 和三角色共享状态，持久化到 `localStorage`。
 - `src/store/demoUiStore.ts`：非持久化演示界面状态。
 - `src/services/`：访客令牌、语音识别和脱敏诊断。
-- `api/openhex/chat-token.ts`：唯一服务端接口，只负责签发短时访客令牌。
+- `api/openhex/chat-token.ts`：签发短时访客令牌；`api/openhex/demo-reset.ts`：使当前浏览器的访客 Cookie 失效。
 - `src/pages/`：三角色页面与详情页。
 - `src/styles/`：设计令牌和新版覆盖样式；`src/styles.css` 保留原有结构样式。
 

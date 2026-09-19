@@ -10,6 +10,7 @@ import {
 
 const testCase: CareCase = {
   caseId: 'CASE-TEST',
+  caseSource: 'ELDER_INPUT',
   subjectElderId: 'E001',
   requesterId: 'E001',
   caseType: 'MOBILITY',
@@ -91,6 +92,8 @@ describe('Shared Case Store and conversation context', () => {
 
     store.getState().submitElderMessage('不是后天，是明天')
     expect(store.getState().cases['CASE-001'].appointmentTime).toBe('明日 14:30')
+    expect(store.getState().cases['CASE-001'].agentSummary).toContain('明日 14:30')
+    expect(store.getState().cases['CASE-001'].requestSummary).toContain('明日 14:30')
     expect(Object.keys(store.getState().cases)).toEqual(['CASE-001'])
     expect(store.getState().cases['CASE-001'].timeline.at(-1)?.label).toContain('老人更新陪诊信息')
   })

@@ -1,8 +1,7 @@
 import { useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { ROLE_HOME } from '../data/mockData'
 import type { Role } from '../domain/models'
-import { useDemoStore } from '../store/demoStore'
 import { ArrowIcon, ShieldHeartIcon } from '../components/ui/Icons'
 import { LifePhotoWall } from '../components/landing/LifePhotoWall'
 
@@ -11,25 +10,18 @@ const roleEntries: Array<{
   title: string
   subtitle: string
 }> = [
-  { role: 'ELDER', title: '老人', subtitle: '有需要，直接说。' },
-  { role: 'FAMILY', title: '家属', subtitle: '不必反复追问，也知道事情正在被处理。' },
-  { role: 'STAFF', title: '工作人员', subtitle: '少一点琐碎，多一点真正面对人的时间。' },
+  { role: 'ELDER', title: '老人端', subtitle: '有需要，直接说。' },
+  { role: 'FAMILY', title: '家属端', subtitle: '关心进展，也可以发起请求。' },
+  { role: 'STAFF', title: '工作人员端', subtitle: '处理需求、风险和人工决策。' },
 ]
 
 export function LandingPage() {
-  const navigate = useNavigate()
-  const setActiveRole = useDemoStore((state) => state.setActiveRole)
   const roleEntryRef = useRef<HTMLElement>(null)
   const mainRef = useRef<HTMLElement>(null)
 
   const explore = () => {
     roleEntryRef.current?.scrollIntoView({ block: 'start' })
     roleEntryRef.current?.focus({ preventScroll: true })
-  }
-
-  const enterAs = (role: Role) => {
-    setActiveRole(role)
-    navigate(ROLE_HOME[role])
   }
 
   return (
@@ -55,12 +47,7 @@ export function LandingPage() {
             </p>
             <p className="hero__value">让技术负责记住，让人负责关心。</p>
             <div className="hero__actions">
-              <button className="primary-button" type="button" onClick={() => enterAs('ELDER')}>
-                开始体验
-              </button>
-              <button className="hero__explore" type="button" onClick={explore}>
-                自由探索 <span aria-hidden="true">↓</span>
-              </button>
+              <button className="primary-button" type="button" onClick={explore}>选择体验入口 <span aria-hidden="true">↓</span></button>
             </div>
           </div>
         </section>
@@ -77,10 +64,10 @@ export function LandingPage() {
           </div>
           <div className="role-entry-grid">
             {roleEntries.map(({ role, title, subtitle }) => (
-              <button key={role} className="role-entry-card" type="button" onClick={() => enterAs(role)}>
+              <Link key={role} className="role-entry-card" to={ROLE_HOME[role]}>
                 <span><strong>{title}</strong><small>{subtitle}</small></span>
                 <ArrowIcon className="role-entry-card__arrow" />
-              </button>
+              </Link>
             ))}
           </div>
         </section>

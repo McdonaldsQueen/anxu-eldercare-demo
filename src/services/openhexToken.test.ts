@@ -77,4 +77,22 @@ describe('OpenHex token client', () => {
     expect(request).toHaveBeenCalledTimes(2)
     vi.useRealTimers()
   })
+
+  it('does not restore an old token when a request finishes after demo reset', async () => {
+    let finishOldRequest: ((response: Response) => void) | undefined
+    const request = vi.fn()
+      .mockImplementationOnce(() => new Promise<Response>((resolve) => { finishOldRequest = resolve }))
+      .mockImplementationOnce(async () => tokenResponse('new-token', '2030-01-01T00:30:00.000Z'))
+    const now = () => Date.parse('2030-01-01T00:00:00.000Z')
+
+    const oldRequest = getOpenhexToken(request, now)
+    resetOpenhexTokenCache()
+    const newRequest = getOpenhexToken(request, now)
+    finishOldRequest?.(tokenResponse('old-token', '2030-01-01T00:30:00.000Z'))
+
+    await expect(oldRequest).rejects.toThrow('cancelled by demo reset')
+    await expect(newRequest).resolves.toBe('new-token')
+    await expect(getOpenhexToken(request, now)).resolves.toBe('new-token')
+    expect(request).toHaveBeenCalledTimes(2)
+  })
 })
