@@ -17,15 +17,18 @@ import {
 import {
   foldOpenhexHistory,
   historyHasCompletedTurn,
+  isInternalCarelinkMessage,
   mergeSyncedOpenhexMessages,
   type SyncedOpenhexHistory,
 } from '../../services/openhexHistorySync'
 import { getOpenhexToken, resetOpenhexTokenCache } from '../../services/openhexToken'
+import { CARELINK_SYNC_EVENT } from '../../services/carelinkPolicy'
 import { DEMO_RESET_EVENT } from '../../services/demoReset'
 import { useDemoStore } from '../../store/demoStore'
 import { useDemoUiStore } from '../../store/demoUiStore'
 import { ArrowIcon, MicIcon, SparkIcon } from '../ui/Icons'
 import { RiskFollowUpPanel } from './RiskFollowUpPanel'
+import { SafeMessageText } from './SafeMessageText'
 
 type VoiceState = 'IDLE' | 'REQUESTING' | 'LISTENING' | 'ERROR'
 
@@ -55,6 +58,7 @@ export function ElderConversation() {
   const isRespondingRef = useRef(false)
   const resetEpochRef = useRef(0)
   const experienceMode = useDemoUiStore((state) => state.experienceMode)
+  const setOpenhexConversationId = useDemoUiStore((state) => state.setOpenhexConversationId)
   const session = useDemoStore((state) => state.conversationState.elder)
   const submitElderMessage = useDemoStore((state) => state.submitElderMessage)
   const activeServiceCase = useDemoStore((state) =>
@@ -104,9 +108,16 @@ export function ElderConversation() {
     syncedHistory,
     activeConversationId,
   ), [activeConversationId, chat.messages, syncedHistory])
+  const displayedOpenhexMessages = useMemo(() => openhexMessages.filter((message) => (
+    message.role !== 'system' && !isInternalCarelinkMessage(message.text)
+  )), [openhexMessages])
   isRespondingRef.current = chat.isResponding
 
   useEffect(() => () => recognitionRef.current?.stop(), [])
+
+  useEffect(() => {
+    setOpenhexConversationId(activeConversationId)
+  }, [activeConversationId, setOpenhexConversationId])
 
   useEffect(() => {
     const clearConversation = () => {
@@ -118,6 +129,7 @@ export function ElderConversation() {
       setVoiceState('IDLE')
       setVoiceMessage('')
       setTransportConversationId(undefined)
+      setOpenhexConversationId(undefined)
       setSyncedHistory(null)
       turnStartedAtRef.current = null
       reconciledTurnStartedAtRef.current = null
@@ -125,7 +137,7 @@ export function ElderConversation() {
     }
     window.addEventListener(DEMO_RESET_EVENT, clearConversation)
     return () => window.removeEventListener(DEMO_RESET_EVENT, clearConversation)
-  }, [chat.clear])
+  }, [chat.clear, setOpenhexConversationId])
 
   useEffect(() => {
     if (!chat.isResponding) {
@@ -196,6 +208,55 @@ export function ElderConversation() {
       if (timer !== undefined) window.clearTimeout(timer)
     }
   }, [activeConversationId, chat.interrupt, chat.isResponding, chatClient, experienceMode])
+
+  useEffect(() => {
+    if (experienceMode !== 'OPENHEX' || !activeConversationId || chat.isResponding) return
+    let stopped = false
+    let rapidTimer: number | undefined
+    const resetEpoch = resetEpochRef.current
+
+    const syncHistory = async () => {
+      try {
+        const history = await chatClient.messages(activeConversationId)
+        if (stopped || resetEpoch !== resetEpochRef.current) return
+        if (history.entries.length === 0) return
+        setSyncedHistory({
+          conversationId: activeConversationId,
+          messages: foldOpenhexHistory(history.entries),
+          syncedAt: Date.now(),
+        })
+      } catch {
+        // Diagnostics are captured by the shared OpenHex fetch wrapper.
+      }
+    }
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void syncHistory()
+    }
+    const startRapidSync = () => {
+      if (rapidTimer !== undefined) window.clearTimeout(rapidTimer)
+      const stopAt = Date.now() + 5 * 60_000
+      const tick = async () => {
+        await syncHistory()
+        if (!stopped && Date.now() < stopAt) rapidTimer = window.setTimeout(() => void tick(), 2_000)
+      }
+      void tick()
+    }
+
+    void syncHistory()
+    const interval = window.setInterval(() => void syncHistory(), 30_000)
+    window.addEventListener('focus', syncHistory)
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener(CARELINK_SYNC_EVENT, startRapidSync)
+    return () => {
+      stopped = true
+      window.clearInterval(interval)
+      if (rapidTimer !== undefined) window.clearTimeout(rapidTimer)
+      window.removeEventListener('focus', syncHistory)
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener(CARELINK_SYNC_EVENT, startRapidSync)
+    }
+  }, [activeConversationId, chat.isResponding, chatClient, experienceMode])
 
   useEffect(() => {
     if (chat.status !== 'streaming' || firstEventRecordedRef.current) return
@@ -364,23 +425,21 @@ export function ElderConversation() {
         </p>
       )}
 
-      {experienceMode === 'OPENHEX' && openhexMessages.length > 0 && (
+      {experienceMode === 'OPENHEX' && displayedOpenhexMessages.length > 0 && (
         <div ref={threadRef} className="conversation-thread" aria-live="polite" aria-label="与安序智护的对话">
-          {openhexMessages
-            .filter((message) => message.role !== 'system')
-            .map((message) => (
+          {displayedOpenhexMessages.map((message) => (
               <div className={`message-row message-row--${message.role}`} key={message.id}>
                 {message.role === 'assistant' && <span className="message-avatar"><SparkIcon /></span>}
                 <div className="message-content">
                   <span>{message.role === 'user' ? '王阿姨' : message.agent?.name || '安序智护'}</span>
-                  <p>{message.text || (message.pending || message.streaming ? '正在思考…' : '')}</p>
+                  <SafeMessageText text={message.text || (message.pending || message.streaming ? '正在思考…' : '')} />
                 </div>
               </div>
             ))}
         </div>
       )}
 
-      {experienceMode === 'OPENHEX' && openhexMessages.length === 0 && (
+      {experienceMode === 'OPENHEX' && displayedOpenhexMessages.length === 0 && (
         <div className="conversation-empty">
           <span><SparkIcon /></span>
           <div><strong>我在这里，您慢慢说</strong><p>可以问日常生活，也可以说说今天需要什么帮助。</p></div>

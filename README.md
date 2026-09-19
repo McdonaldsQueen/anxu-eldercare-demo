@@ -28,6 +28,10 @@ npm run build
 | `VITE_OPENHEX_IDLE_TIMEOUT_MS` | 浏览器 | 可选，连续无事件超时，默认 `300000` |
 | `OPENHEX_WORKSPACE_SLUG` | 服务端 | OpenHex 工作区 slug |
 | `OPENHEX_WORKSPACE_KEY` | 服务端 | `sk_…` 工作区密钥，禁止使用 `VITE_` 前缀 |
+| `OPENHEX_AGENT_ID` | Vercel 服务端 | 后台政策推送使用的已发布 Agent UUID |
+| `CARELINK_API_BASE_URL` | Vercel 服务端 | Railway Carelink HTTPS 域名 |
+| `CARELINK_API_KEY` | Vercel 服务端 | Railway API 密钥 |
+| `CRON_SECRET` | Vercel 服务端 | Vercel Cron Bearer 密钥 |
 
 ## 文档
 
@@ -37,6 +41,7 @@ npm run build
 - [产品能力](./docs/product-capabilities.md)
 - [系统架构](./docs/architecture.md)
 - [OpenHex 接入与排障](./docs/openhex-integration.md)
+- [Carelink 政策提醒](./docs/carelink-integration.md)
 - [测试与验收](./docs/testing.md)
 - [Vercel Production 部署](./docs/operations/vercel-production.md)
 

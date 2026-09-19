@@ -171,6 +171,8 @@ button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible
 .message-content { max-width: min(88%, 38rem); }
 .message-content > span { margin-bottom: .35rem; font-size: .75rem; }
 .message-content p { padding: .85rem 1rem; border-radius: 6px 18px 18px 18px; font-size: 1rem; line-height: 1.75; box-shadow: 0 5px 18px rgba(49,69,58,.04); }
+.message-content p a { color: var(--green-dark); font-weight: 700; text-decoration-thickness: .08em; text-underline-offset: .16em; }
+.message-row--user .message-content p a { color: white; }
 .message-row--user .message-content p { border-radius: 18px 6px 18px 18px; background: var(--green); }
 .voice-feedback { margin: .8rem 1.5rem 0; padding: .65rem .8rem; border-radius: 9px; color: var(--green-dark); background: var(--green-soft); font-size: .85rem; }
 .voice-feedback--error { color: var(--danger); background: var(--danger-soft); }
@@ -275,7 +277,7 @@ button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible
 .demo-toolbar__toggle small { display: block; }
 .demo-toolbar__toggle small { margin-top: .15rem; color: var(--muted); }
 .demo-toolbar__toggle > span:last-child { color: var(--green); font-size: .8rem; }
-.demo-toolbar__panel { padding: 1.4rem; display: grid; grid-template-columns: .9fr 1fr 1.4fr; gap: 1.2rem; border-top: 1px solid rgba(47,111,93,.12); }
+.demo-toolbar__panel { padding: 1.4rem; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.2rem; border-top: 1px solid rgba(47,111,93,.12); }
 .demo-toolbar__panel > section { min-width: 0; padding-right: 1.2rem; border-right: 1px solid rgba(47,111,93,.12); }
 .demo-toolbar__panel > section:last-child { padding-right: 0; border-right: 0; }
 .segmented-control { padding: .25rem; display: grid; grid-template-columns: 1fr 1fr; gap: .25rem; border-radius: 11px; background: #e9ede6; }
@@ -288,6 +290,14 @@ button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible
 .diagnostic-summary__actions .reset-link { min-height: 2.65rem; padding: .45rem .7rem; display: inline-flex; align-items: center; justify-content: center; gap: .45rem; border: 1px solid var(--line); border-radius: 9px; color: var(--green-dark); background: var(--paper-strong); font-weight: 600; text-decoration: none; cursor: pointer; }
 .demo-toolbar__actions svg { width: 1.05rem; }
 .demo-toolbar__actions button.is-risk { color: var(--danger); border-color: #e8c5c0; background: #fff7f5; }
+.demo-toolbar__actions button:disabled { opacity: .45; cursor: not-allowed; }
+.policy-reminder__heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+.policy-reminder__heading strong,
+.policy-reminder__heading small { display: block; }
+.policy-reminder__heading small { margin-top: .25rem; color: var(--muted); font-family: var(--font-mono); font-size: .7rem; }
+.policy-reminder__heading > span { padding: .3rem .55rem; border-radius: 999px; color: var(--muted); background: #ecefe9; font-size: .7rem; white-space: nowrap; }
+.policy-reminder__heading > span.is-enabled { color: var(--green-dark); background: var(--green-soft); }
+.policy-reminder .demo-toolbar__actions { margin-top: .75rem; grid-template-columns: 1fr 1fr; }
 .diagnostic-summary__heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
 .diagnostic-summary__heading strong,
 .diagnostic-summary__heading small { display: block; }

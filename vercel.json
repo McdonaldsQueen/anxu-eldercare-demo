@@ -1,4 +1,8 @@
 {
+  "crons": [
+    { "path": "/api/cron/carelink-crawl", "schedule": "0 0 * * *" },
+    { "path": "/api/cron/carelink-push", "schedule": "0 1 * * *" }
+  ],
   "rewrites": [
     { "source": "/elder", "destination": "/index.html" },
     { "source": "/elder/:path*", "destination": "/index.html" },

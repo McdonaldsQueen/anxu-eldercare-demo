@@ -41,6 +41,8 @@ export interface SyncedOpenhexHistory {
   syncedAt: number
 }
 
+export const isInternalCarelinkMessage = (text: string) => /^\[CARELINK_POLICY_PUSH:[A-Za-z0-9_-]+\]/.test(text.trim())
+
 export const mergeSyncedOpenhexMessages = (
   liveMessages: ChatMessage[],
   syncedHistory: SyncedOpenhexHistory | null,

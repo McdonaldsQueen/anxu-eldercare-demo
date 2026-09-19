@@ -6,6 +6,7 @@
 npm test
 npm run build
 git diff --check
+(cd services/carelink && python -m unittest -v)
 ```
 
 | 变更 | 必跑测试 |
@@ -16,6 +17,8 @@ git diff --check
 | 本地意图解析 | `mockDecisionEngine.test.ts` |
 | 家属对话 | `FamilyConversation.test.tsx` |
 | 全局重置与访客 Cookie 失效 | `demoReset.test.ts`、`demoResetApi.test.ts`、`App.test.tsx` |
+| Carelink 编排和安全渲染 | `carelinkApi.test.ts`、`carelinkPolicy.test.ts`、`policyPush.test.ts`、`SafeMessageText.test.tsx` |
+| Python 政策与批次状态 | `services/carelink/test_policy_service.py`、`test_push_service.py` |
 
 ## UI 验收
 
@@ -36,6 +39,16 @@ git diff --check
 6. 演示工具栏可复制脱敏诊断，内容不含消息、令牌、Cookie 或 `sk_…`。
 7. 陪诊和紧急 Mock 入口不调用 Agent，三角色流程继续联动。
 8. 当 SSE 未归并最终文本时，包含本轮 `result` 的历史会即时替换 thinking 占位，且不会重发消息。
+9. 绑定政策提醒后，手动推送无需刷新即可出现；内部 `[CARELINK_POLICY_PUSH:…]` 消息不可见。
+10. 政策来源显示标题而非裸链接，只允许 HTTPS 且在新标签页打开。
+
+## Carelink Preview 验收
+
+1. Railway `/health` 返回 `200`，重启后 `/data` 中的去重记录仍存在。
+2. 未创建 OpenHex 会话时不能启用提醒；绑定后状态只显示地区、时间和会话尾号。
+3. 同一政策连续手动/Cron 触发只发送一次；失败任务不确认并能重试。
+4. Vercel Cron 的两个路径已注册，且没有正确 Bearer 密钥时返回 `401`。
+5. 浏览器产物、网络响应和日志不包含工作区密钥、Carelink API Key、Cron Secret 或完整访客标识。
 
 ## Production 发布门槛
 

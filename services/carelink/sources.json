@@ -1,0 +1,92 @@
+{
+  "allowedHosts": ["www.tj.gov.cn", "jnmz.jinan.gov.cn", "mzt.xinjiang.gov.cn"],
+  "indexes": [
+    {"url": "https://www.tj.gov.cn/zwgk/zfxxgkzl/fdzdgknr/zdmsxx220316/yl_157354/zcwj_157367/", "region": "天津市"}
+  ],
+  "policies": [
+    {
+      "id": "tj-2026-28-high-age-allowance",
+      "url": "https://www.tj.gov.cn/zwgk/zfxxgkzl/fdzdgknr/zdmsxx220316/yl_157354/zcwj_157367/202609/t20260908_7369542.html",
+      "title": "天津市民政局关于印发《天津市高龄津贴“免申即享”发放管理办法（试行）》的通知",
+      "institution": "天津市民政局",
+      "region": "天津市",
+      "publishedAt": "2026-09-07",
+      "effectiveAt": "2026-09-07",
+      "expiresAt": null,
+      "applicationDeadline": null,
+      "category": "高龄津贴",
+      "audience": "具有天津市户籍、符合当年重阳节所在公历月满80周岁及以上条件的老年人",
+      "benefitChange": "高龄津贴实行免申即享，仍保留线上线下申领渠道",
+      "actionRequired": "通常无需主动申请；如未获发放，可通过保留的线上线下渠道咨询申领",
+      "actionMode": "none",
+      "universality": 3,
+      "benefitImpact": 4,
+      "evidence": {
+        "title": "天津市民政局关于印发《天津市高龄津贴“免申即享”发放管理办法（试行）》的通知",
+        "institution": "天津市民政局",
+        "publishedAt": "2026-09-07 14:21:15",
+        "effectiveAt": "本办法自印发之日起施行",
+        "validity": "有效性：有效",
+        "audience": "高龄津贴发放对象为具有本市户籍且当年重阳节所在公历月满80周岁及以上的老年人",
+        "benefitChange": "实行高龄津贴“免申即享”发放",
+        "actionRequired": "目前仍保留线上线下申领办理渠道"
+      }
+    },
+    {
+      "id": "jinan-2026-14-high-age-allowance",
+      "url": "https://jnmz.jinan.gov.cn/col/col30777/art/2026/art_e30ed61f75ed469f80fbb260f2958838.html",
+      "title": "济南市民政局 济南市财政局关于印发济南市老年人高龄津贴发放管理办法的通知",
+      "institution": "济南市民政局、济南市财政局",
+      "region": "济南市",
+      "publishedAt": "2026-09-04",
+      "effectiveAt": "2026-10-02",
+      "expiresAt": null,
+      "applicationDeadline": null,
+      "category": "高龄津贴",
+      "audience": "具有济南市户籍、年满80周岁及以上的老年人",
+      "benefitChange": "新办法规定80至89周岁每月不低于100元，90至99周岁每月不低于200元，100周岁及以上每月不低于500元",
+      "actionRequired": "符合条件者由本人或代理人向户籍地村（居）民委员会提出申请",
+      "actionMode": "apply_no_deadline",
+      "universality": 3,
+      "benefitImpact": 5,
+      "evidence": {
+        "title": "济南市民政局 济南市财政局关于印发济南市老年人高龄津贴发放管理办法的通知",
+        "institution": "济南市民政局 济南市财政局",
+        "publishedAt": "发布日期: 2026-09-04",
+        "effectiveAt": "本办法自2026年10月2日起施行",
+        "audience": "具有本市户籍；（二）年满80周岁及以上的老年人",
+        "benefitChange": "80—89周岁老年人每人每月不低于100元；90—99周岁老年人每人每月不低于200元；100周岁及以上老年人每人每月不低于500元",
+        "actionRequired": "由本人或其代理人向户籍所在地的村（居）民委员会提出申请"
+      }
+    },
+    {
+      "id": "xinjiang-2026-4-high-age-allowance",
+      "url": "https://mzt.xinjiang.gov.cn/xjmzt/c113003/202608/7e63251e37104e03a25f020085c6a8a1.shtml",
+      "title": "关于印发《新疆维吾尔自治区80周岁以上老年人基本生活津贴制度实施细则》的通知",
+      "institution": "新疆维吾尔自治区民政厅等五部门",
+      "region": "新疆维吾尔自治区",
+      "publishedAt": "2026-08-07",
+      "effectiveAt": "2026-09-07",
+      "expiresAt": "2031-09-06",
+      "expiryTermYears": 5,
+      "applicationDeadline": null,
+      "category": "高龄津贴",
+      "audience": "具有新疆维吾尔自治区户籍、年满80周岁及以上的老年人",
+      "benefitChange": "高龄津贴免申即享，按月发放；无共享认证数据者需按规定自主认证或接受基层排查",
+      "actionRequired": "通常免申；如无法共享认证，按当地要求完成资格认证",
+      "actionMode": "conditional_certification",
+      "universality": 3,
+      "benefitImpact": 4,
+      "evidence": {
+        "title": "关于印发《新疆维吾尔自治区80周岁以上老年人基本生活津贴制度实施细则》的通知",
+        "institution": "新疆维吾尔自治区",
+        "publishedAt": "发布时间：2026-08-07",
+        "effectiveAt": "本细则自2026年9月7日起施行",
+        "expiresAt": "有效期5年",
+        "audience": "具有自治区行政区域内户籍、年龄在80周岁（含80周岁）以上的老年人",
+        "benefitChange": "按照“免申即享、主动发放”方式",
+        "actionRequired": "无共享认证数据的按照自主认证、基层排查的方式进行认证"
+      }
+    }
+  ]
+}

@@ -1,0 +1,86 @@
+{
+  "openapi": "3.1.0",
+  "info": {"title": "安序智护政策推送接口", "version": "1.0.0", "description": "仅返回已核验的政府涉老政策；实际短信发送后需确认。"},
+  "paths": {
+    "/v1/openhex/policies/pull": {
+      "post": {
+        "summary": "获取 0–3 条政策及最终短信",
+        "security": [{"ApiKeyAuth": []}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/PullRequest"}}}},
+        "responses": {"200": {"description": "候选政策", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/PullResponse"}}}}}
+      }
+    },
+    "/v1/openhex/policies/ack": {
+      "post": {
+        "summary": "确认短信已实际发送，写入去重历史",
+        "security": [{"ApiKeyAuth": []}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": "object", "required": ["recipientId", "deliveryId"], "properties": {"recipientId": {"type": "string"}, "deliveryId": {"type": "string"}}}}}},
+        "responses": {"200": {"description": "确认结果"}}
+      }
+    },
+    "/v1/openhex/subscriptions/upsert": {
+      "post": {"summary": "绑定或替换王阿姨的 OpenHex 接收会话", "security": [{"ApiKeyAuth": []}], "responses": {"200": {"description": "安全订阅状态"}}}
+    },
+    "/v1/openhex/subscriptions/status": {
+      "post": {"summary": "查询订阅与最近推送状态", "security": [{"ApiKeyAuth": []}], "responses": {"200": {"description": "安全订阅状态"}}}
+    },
+    "/v1/openhex/subscriptions/delete": {
+      "post": {"summary": "解除当前访客的接收会话", "security": [{"ApiKeyAuth": []}], "responses": {"200": {"description": "已解除"}}}
+    },
+    "/v1/openhex/push/claim": {
+      "post": {"summary": "以租约领取一个幂等推送批次", "security": [{"ApiKeyAuth": []}], "responses": {"200": {"description": "claimed、no_new、busy、cooldown 或 not_subscribed"}}}
+    },
+    "/v1/openhex/push/complete": {
+      "post": {"summary": "OpenHex 接受消息后完成批次并写入去重历史", "security": [{"ApiKeyAuth": []}], "responses": {"200": {"description": "完成结果"}}}
+    },
+    "/v1/openhex/push/fail": {
+      "post": {"summary": "释放失败批次，允许后续重试", "security": [{"ApiKeyAuth": []}], "responses": {"200": {"description": "失败登记结果"}}}
+    },
+    "/v1/admin/crawl": {
+      "post": {"summary": "刷新并重新核验官方政策", "security": [{"ApiKeyAuth": []}], "responses": {"200": {"description": "抓取报告"}}}
+    },
+    "/v1/admin/reset-recipient": {
+      "post": {"summary": "清除演示订阅和推送记录，不删除政策缓存", "security": [{"ApiKeyAuth": []}], "responses": {"200": {"description": "重置结果"}}}
+    }
+  },
+  "components": {
+    "securitySchemes": {"ApiKeyAuth": {"type": "apiKey", "in": "header", "name": "X-API-Key"}},
+    "schemas": {
+      "PullRequest": {
+        "type": "object", "required": ["recipientId", "region"],
+        "properties": {
+          "recipientId": {"type": "string", "description": "不含个人身份信息的稳定匿名 ID"},
+          "region": {"type": "string", "enum": ["天津市", "济南市", "新疆维吾尔自治区"]},
+          "age": {"type": "integer", "minimum": 0, "maximum": 120},
+          "localHukou": {"type": "boolean"},
+          "needsCertification": {"type": "boolean"}
+        }
+      },
+      "PullResponse": {
+        "type": "object", "required": ["generatedAt", "region", "count", "messages"],
+        "properties": {
+          "generatedAt": {"type": "string", "format": "date-time"},
+          "region": {"type": "string"},
+          "count": {"type": "integer", "minimum": 0, "maximum": 3},
+          "messages": {"type": "array", "maxItems": 3, "items": {"$ref": "#/components/schemas/PolicyMessage"}}
+        }
+      },
+      "PolicyMessage": {
+        "type": "object",
+        "required": ["policyId", "title", "sourceInstitution", "originalUrl", "region", "publishedAt", "category", "audience", "benefitChange", "actionRequired", "actionUrgency", "benefitImpact", "priority", "smsText", "evidence", "deliveryId"],
+        "properties": {
+          "policyId": {"type": "string"}, "title": {"type": "string"}, "sourceInstitution": {"type": "string"},
+          "originalUrl": {"type": "string", "format": "uri"}, "region": {"type": "string"},
+          "publishedAt": {"type": "string", "format": "date"}, "effectiveAt": {"type": ["string", "null"], "format": "date"},
+          "expiresAt": {"type": ["string", "null"], "format": "date"}, "applicationDeadline": {"type": ["string", "null"], "format": "date"},
+          "category": {"type": "string"}, "audience": {"type": "string"}, "benefitChange": {"type": "string"},
+          "actionRequired": {"type": "string"}, "actionUrgency": {"type": "integer", "minimum": 1, "maximum": 5},
+          "benefitImpact": {"type": "integer", "minimum": 1, "maximum": 5}, "priority": {"type": "string", "enum": ["P0", "P1", "P2", "P3"]},
+          "smsText": {"type": "string", "description": "可直接发送的完整短信，末尾含官方原文链接"}, "evidence": {"type": "object", "additionalProperties": {"type": "object", "properties": {"quote": {"type": "string"}, "url": {"type": "string", "format": "uri"}}}},
+          "deliveryId": {"type": "string"}, "policyStatus": {"type": "string", "enum": ["effective", "upcoming"]},
+          "expiresAtDerived": {"type": "boolean"}, "reminder": {"type": "boolean"}
+        }
+      }
+    }
+  }
+}

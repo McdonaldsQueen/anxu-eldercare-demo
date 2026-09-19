@@ -7,6 +7,7 @@
 | [产品能力](./product-capabilities.md) | 三个角色能做什么？哪些是真实能力，哪些是 Mock？ |
 | [系统架构](./architecture.md) | 模块、状态、数据和请求如何流动？ |
 | [OpenHex 接入](./openhex-integration.md) | 鉴权、流式回复、超时、诊断和恢复如何工作？ |
+| [Carelink 政策提醒](./carelink-integration.md) | 政策核验、订阅、定时推送、幂等和 Railway 如何工作？ |
 | [测试与验收](./testing.md) | 改动后需要跑哪些检查？ |
 | [ADR](./adr/) | 为什么选择当前边界和实现？ |
 | [Vercel Production](./operations/vercel-production.md) | 如何发布、验收和回滚？ |

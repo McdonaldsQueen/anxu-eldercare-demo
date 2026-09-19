@@ -1,10 +1,17 @@
-import { useState, useSyncExternalStore } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   clearOpenhexDiagnostics,
   getOpenhexDiagnostics,
   subscribeOpenhexDiagnostics,
 } from '../../services/openhexDiagnostics'
+import {
+  getPolicySubscriptionStatus,
+  pushPoliciesNow,
+  subscribePolicyReminder,
+  unsubscribePolicyReminder,
+  type PolicySubscriptionStatus,
+} from '../../services/carelinkPolicy'
 import { useDemoStore } from '../../store/demoStore'
 import { useDemoUiStore } from '../../store/demoUiStore'
 import { AlertIcon, CheckIcon, ClipboardIcon, SparkIcon } from '../ui/Icons'
@@ -32,20 +39,77 @@ const outcomeLabel = {
   cancelled: '已停止',
 } as const
 
+const policyOutcomeLabel: Record<string, string> = {
+  completed: '已成功提交',
+  claimed: '正在处理',
+  failed: '等待重试',
+}
+
 export function DemoToolbar() {
   const [isOpen, setIsOpen] = useState(false)
   const [copyState, setCopyState] = useState('')
+  const [policyStatus, setPolicyStatus] = useState<PolicySubscriptionStatus | null>(null)
+  const [policyAction, setPolicyAction] = useState<'idle' | 'loading'>('idle')
+  const [policyMessage, setPolicyMessage] = useState('')
   const navigate = useNavigate()
   const activeRole = useDemoStore((state) => state.activeRole)
   const submitElderMessage = useDemoStore((state) => state.submitElderMessage)
   const experienceMode = useDemoUiStore((state) => state.experienceMode)
   const setExperienceMode = useDemoUiStore((state) => state.setExperienceMode)
+  const openhexConversationId = useDemoUiStore((state) => state.openhexConversationId)
   const diagnostics = useSyncExternalStore(
     subscribeOpenhexDiagnostics,
     getOpenhexDiagnostics,
     () => [],
   )
   const latestConversation = [...diagnostics].reverse().find((event) => event.conversationSuffix)
+
+  useEffect(() => {
+    if (!isOpen) return
+    let cancelled = false
+    void getPolicySubscriptionStatus()
+      .then((status) => { if (!cancelled) setPolicyStatus(status) })
+      .catch(() => { if (!cancelled) setPolicyMessage('暂时无法读取政策提醒状态。') })
+    return () => { cancelled = true }
+  }, [isOpen])
+
+  const runPolicyAction = async (action: 'subscribe' | 'unsubscribe' | 'push') => {
+    if (policyAction === 'loading') return
+    if (action === 'subscribe' && !openhexConversationId) {
+      setPolicyMessage('请先在老人端与安序智护发送一条消息，再启用每日提醒。')
+      return
+    }
+    setPolicyAction('loading')
+    setPolicyMessage('')
+    try {
+      if (action === 'subscribe') {
+        const status = await subscribePolicyReminder(openhexConversationId!)
+        setPolicyStatus(status)
+        setPolicyMessage('已绑定当前对话，每天会在 09:00–09:59 检查政策提醒。')
+      } else if (action === 'unsubscribe') {
+        const status = await unsubscribePolicyReminder()
+        setPolicyStatus(status)
+        setPolicyMessage('已停用每日政策提醒。')
+      } else {
+        const result = await pushPoliciesNow()
+        const labels = {
+          sent: '已提交给安序智护，回复生成后会自动显示在对话中。',
+          no_new: '当前没有新的已核验政策。',
+          busy: '另一项推送正在处理，请稍后再试。',
+          not_subscribed: '请先启用每日提醒并绑定当前对话。',
+          cooldown: `操作太频繁，请约 ${result.retryAfterSeconds ?? 60} 秒后再试。`,
+          failed: '本次推送失败，系统不会确认发送，可稍后重试。',
+        }
+        setPolicyMessage(labels[result.outcome])
+        const status = await getPolicySubscriptionStatus()
+        setPolicyStatus(status)
+      }
+    } catch (error) {
+      setPolicyMessage(error instanceof Error ? error.message : '政策提醒服务暂时不可用。')
+    } finally {
+      setPolicyAction('idle')
+    }
+  }
 
   const createEscortDemo = () => {
     setExperienceMode('PHASE4')
@@ -115,6 +179,40 @@ export function DemoToolbar() {
               <button type="button" onClick={createEscortDemo}><ClipboardIcon />体验陪诊 Case</button>
               <button className="is-risk" type="button" onClick={createEmergencyDemo}><AlertIcon />体验紧急 Case</button>
             </div>
+          </section>
+
+          <section className="policy-reminder">
+            <div className="policy-reminder__heading">
+              <div>
+                <p className="eyebrow">政策提醒</p>
+                <strong>天津市 · 每天 09:00</strong>
+                <small>
+                  {policyStatus?.enabled
+                    ? `已绑定会话 …${policyStatus.conversationSuffix ?? '—'}`
+                    : '尚未绑定 OpenHex 对话'}
+                </small>
+                {policyStatus?.lastOutcome && (
+                  <small>最近运行：{policyOutcomeLabel[policyStatus.lastOutcome] ?? policyStatus.lastOutcome}</small>
+                )}
+              </div>
+              <span className={policyStatus?.enabled ? 'is-enabled' : ''}>
+                {policyStatus?.enabled ? '已启用' : '未启用'}
+              </span>
+            </div>
+            <p className="demo-toolbar__note">仅推送经官方来源核验、适合王阿姨（82 岁，天津市户籍）的政策。</p>
+            <div className="demo-toolbar__actions">
+              <button
+                type="button"
+                disabled={policyAction === 'loading'}
+                onClick={() => void runPolicyAction(policyStatus?.enabled ? 'unsubscribe' : 'subscribe')}
+              >{policyStatus?.enabled ? '停用每日提醒' : '启用每日提醒'}</button>
+              <button
+                type="button"
+                disabled={policyAction === 'loading' || !policyStatus?.enabled}
+                onClick={() => void runPolicyAction('push')}
+              >{policyAction === 'loading' ? '处理中…' : '立即检查并推送'}</button>
+            </div>
+            {policyMessage && <p className="demo-toolbar__note" role="status">{policyMessage}</p>}
           </section>
 
           <section className="diagnostic-summary">

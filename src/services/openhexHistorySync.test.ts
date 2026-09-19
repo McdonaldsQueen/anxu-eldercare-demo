@@ -3,6 +3,7 @@ import type { HistoryPage } from '@openhex-ai/agent-sdk'
 import {
   foldOpenhexHistory,
   historyHasCompletedTurn,
+  isInternalCarelinkMessage,
   mergeSyncedOpenhexMessages,
 } from './openhexHistorySync'
 
@@ -25,6 +26,10 @@ const record = (
 })
 
 describe('OpenHex history reconciliation', () => {
+  it('recognizes only the internal Carelink trigger prefix', () => {
+    expect(isInternalCarelinkMessage('[CARELINK_POLICY_PUSH:abc_123]\n系统提示')).toBe(true)
+    expect(isInternalCarelinkMessage('政策提醒：[天津高龄津贴](https://example.gov.cn/policy)')).toBe(false)
+  })
   it('only accepts a terminal result belonging to the current turn', () => {
     const startedAt = Date.now()
     const oldTurn = [

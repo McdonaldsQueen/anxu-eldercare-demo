@@ -1,0 +1,64 @@
+{
+  "generatedAt": "2026-09-19T06:09:19.480461+00:00",
+  "region": "天津市",
+  "count": 1,
+  "messages": [
+    {
+      "policyId": "tj-2026-28-high-age-allowance",
+      "title": "天津市民政局关于印发《天津市高龄津贴“免申即享”发放管理办法（试行）》的通知",
+      "sourceInstitution": "天津市民政局",
+      "originalUrl": "https://www.tj.gov.cn/zwgk/zfxxgkzl/fdzdgknr/zdmsxx220316/yl_157354/zcwj_157367/202609/t20260908_7369542.html",
+      "region": "天津市",
+      "publishedAt": "2026-09-07",
+      "effectiveAt": "2026-09-07",
+      "expiresAt": null,
+      "applicationDeadline": null,
+      "category": "高龄津贴",
+      "audience": "具有天津市户籍、符合当年重阳节所在公历月满80周岁及以上条件的老年人",
+      "benefitChange": "高龄津贴实行免申即享，仍保留线上线下申领渠道",
+      "actionRequired": "通常无需主动申请；如未获发放，可通过保留的线上线下渠道咨询申领",
+      "actionUrgency": 1,
+      "benefitImpact": 4,
+      "priority": "P1",
+      "smsText": "【安序智护】天津高龄津贴实行免申即享。符合条件的本市户籍老人如未获发放，可向当地民政部门咨询保留的申领渠道。原文链接：https://www.tj.gov.cn/zwgk/zfxxgkzl/fdzdgknr/zdmsxx220316/yl_157354/zcwj_157367/202609/t20260908_7369542.html",
+      "evidence": {
+        "title": {
+          "quote": "天津市民政局关于印发《天津市高龄津贴“免申即享”发放管理办法（试行）》的通知",
+          "url": "https://www.tj.gov.cn/zwgk/zfxxgkzl/fdzdgknr/zdmsxx220316/yl_157354/zcwj_157367/202609/t20260908_7369542.html"
+        },
+        "institution": {
+          "quote": "天津市民政局",
+          "url": "https://www.tj.gov.cn/zwgk/zfxxgkzl/fdzdgknr/zdmsxx220316/yl_157354/zcwj_157367/202609/t20260908_7369542.html"
+        },
+        "publishedAt": {
+          "quote": "2026-09-07 14:21:15",
+          "url": "https://www.tj.gov.cn/zwgk/zfxxgkzl/fdzdgknr/zdmsxx220316/yl_157354/zcwj_157367/202609/t20260908_7369542.html"
+        },
+        "effectiveAt": {
+          "quote": "本办法自印发之日起施行",
+          "url": "https://www.tj.gov.cn/zwgk/zfxxgkzl/fdzdgknr/zdmsxx220316/yl_157354/zcwj_157367/202609/t20260908_7369542.html"
+        },
+        "validity": {
+          "quote": "有效性：有效",
+          "url": "https://www.tj.gov.cn/zwgk/zfxxgkzl/fdzdgknr/zdmsxx220316/yl_157354/zcwj_157367/202609/t20260908_7369542.html"
+        },
+        "audience": {
+          "quote": "高龄津贴发放对象为具有本市户籍且当年重阳节所在公历月满80周岁及以上的老年人",
+          "url": "https://www.tj.gov.cn/zwgk/zfxxgkzl/fdzdgknr/zdmsxx220316/yl_157354/zcwj_157367/202609/t20260908_7369542.html"
+        },
+        "benefitChange": {
+          "quote": "实行高龄津贴“免申即享”发放",
+          "url": "https://www.tj.gov.cn/zwgk/zfxxgkzl/fdzdgknr/zdmsxx220316/yl_157354/zcwj_157367/202609/t20260908_7369542.html"
+        },
+        "actionRequired": {
+          "quote": "目前仍保留线上线下申领办理渠道",
+          "url": "https://www.tj.gov.cn/zwgk/zfxxgkzl/fdzdgknr/zdmsxx220316/yl_157354/zcwj_157367/202609/t20260908_7369542.html"
+        }
+      },
+      "expiresAtDerived": false,
+      "policyStatus": "effective",
+      "reminder": false,
+      "deliveryId": "f0e508ec1386628d8798310e"
+    }
+  ]
+}

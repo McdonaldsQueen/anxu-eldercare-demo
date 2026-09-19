@@ -1,6 +1,6 @@
 # Vercel Production 部署手册
 
-本文档记录安序智护 Demo 当前的生产发布流程。最后验证时间：2026-09-16。
+本文档记录安序智护 Demo 当前的生产发布流程。最后验证时间：2026-09-19。
 
 ## 当前部署信息
 
@@ -13,7 +13,8 @@
 | Framework Preset | Vite |
 | 构建命令 | `npm run build` |
 | 前端产物 | `dist` |
-| Serverless Function | `api/openhex/chat-token.ts` |
+| Serverless Function | `api/openhex/*`、`api/carelink/*`、`api/cron/*` |
+| 政策服务 | Railway `services/carelink` + `/data` Volume |
 | 正式域名 | <https://anxu-eldercare-demo.vercel.app> |
 | Node.js | 项目要求 `>=20.12`，Vercel 当前配置为 24.x |
 
@@ -29,6 +30,10 @@ Vercel Production 必须配置以下变量：
 | `VITE_OPENHEX_API_BASE_URL` | 浏览器 | 默认 `https://api.openhex.tech` |
 | `OPENHEX_WORKSPACE_SLUG` | 服务端 | 不使用 `VITE_` 前缀 |
 | `OPENHEX_WORKSPACE_KEY` | 服务端 | `sk_…`，必须以 Vercel Secret 保存 |
+| `OPENHEX_AGENT_ID` | 服务端 | 后台政策触发使用的已发布 Agent UUID |
+| `CARELINK_API_BASE_URL` | 服务端 | Railway 公开 HTTPS 域名 |
+| `CARELINK_API_KEY` | 服务端 | 与 Railway `POLICY_API_KEY` 相同，必须保密 |
+| `CRON_SECRET` | 服务端 | Vercel Cron Bearer 密钥，必须保密 |
 
 检查 Production 环境变量名称：
 
@@ -42,6 +47,7 @@ npx vercel@59.17.0 env ls production \
 - 不要把真实值写入本文档、README、Git 提交或前端变量。
 - `.env.local` 仅用于本地开发，已被 `.gitignore` 排除。
 - `OPENHEX_WORKSPACE_KEY` 绝不能添加 `VITE_` 前缀，否则会进入浏览器构建产物。
+- Carelink 与 Cron 密钥同样只允许存在于 Vercel/Railway 服务端环境。
 - 增加或修改环境变量后必须重新部署，已有 Deployment 不会自动重新构建。
 
 ## 发布前检查
@@ -67,6 +73,7 @@ git status --short --branch
 npm ci
 npm test
 npm run build
+(cd services/carelink && python -m unittest -v)
 git diff --check
 ```
 
@@ -97,9 +104,10 @@ Vercel 会依次执行：
 2. 上传当前工作区代码。
 3. 安装依赖。
 4. 执行 `npm run build`。
-5. 构建 `api/openhex/chat-token.ts` Serverless Function。
-6. 创建 Production Deployment。
-7. 将正式域名 alias 更新到新 Deployment。
+5. 构建 OpenHex、Carelink 和 Cron Serverless Functions。
+6. 注册 `vercel.json` 中的每日 Crawl 与 Push Cron。
+7. 创建 Production Deployment。
+8. 将正式域名 alias 更新到新 Deployment。
 
 发布成功时，CLI 输出应包含：
 
@@ -154,6 +162,14 @@ curl -sS -o /dev/null \
 - 陪诊、紧急 Case、家属请求和工作人员处理流程可以正常联动。
 - Mock schema 升级可能重置浏览器中旧版本的 Mock Case，这是预期行为。
 
+### 5. Carelink 政策提醒
+
+- Railway `/health` 为 `200`，并已挂载 `/data` Volume。
+- 老人端先发送消息，再在演示工具栏启用提醒，能看到天津市、每天 09:00 和会话尾号。
+- “立即检查并推送”完成后，无需刷新即可看到 Agent 回复；内部批次消息不可见。
+- 来源以政策标题显示并打开政府原文，同一政策重复触发不会重复发送。
+- Vercel 项目中已注册 `/api/cron/carelink-crawl` 和 `/api/cron/carelink-push` 两个每日任务。
+
 ## 常见故障
 
 ### `Not authorized`
@@ -172,12 +188,20 @@ npx vercel@59.17.0 project inspect anxu-eldercare-demo \
 
 依次检查：
 
-1. 四个 Production 环境变量是否存在。
+1. OpenHex 与 Carelink 的全部 Production 环境变量是否存在。
 2. `VITE_OPENHEX_AGENT_ID` 是否为已发布 Agent UUID。
 3. `OPENHEX_WORKSPACE_SLUG` 是否属于对应工作区。
 4. `OPENHEX_WORKSPACE_KEY` 是否仍有效。
 5. `POST /api/openhex/chat-token` 是否返回 `200`。
 6. 修改环境变量后是否重新部署。
+
+### 政策提醒不可用
+
+1. 检查 Railway `/health`、公开域名和 `/data` Volume。
+2. 确认 Vercel `CARELINK_API_BASE_URL` 使用 HTTPS，且两端 API Key 完全一致。
+3. 确认 `OPENHEX_AGENT_ID` 是服务端变量，并与前端已发布 Agent 对应。
+4. 检查用户是否已创建对话并绑定；隐私窗口属于不同访客，不能读取原窗口订阅。
+5. 检查 Cron 的 Authorization 与 `CRON_SECRET`，不要在日志中输出其值。
 
 浏览器只能得到 30 分钟有效的访客令牌；工作区密钥只允许存在于 Vercel 服务端。
 

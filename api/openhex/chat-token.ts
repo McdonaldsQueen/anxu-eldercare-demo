@@ -1,6 +1,6 @@
 import { OpenhexClient, type StartVisitorSessionRequest } from '@openhex-ai/agent-sdk'
 
-const VISITOR_COOKIE = 'ohx_ref'
+import { VISITOR_COOKIE } from '../_lib/request.js'
 const VISITOR_COOKIE_MAX_AGE = 60 * 60 * 24 * 180
 const TOKEN_TTL_SECONDS = 1800
 const VISITOR_REF_PATTERN = /^[A-Za-z0-9_-]{8,128}$/
