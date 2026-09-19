@@ -23,7 +23,7 @@ POLICY_API_KEY=local-secret POLICY_DB_PATH=./data/policies.sqlite3 \
 
 ## Railway
 
-在同一 GitHub 仓库创建 Railway 服务，Root Directory 设为 `/services/carelink`，配置：
+仓库根目录的 `railway.toml` 会使用 `Dockerfile.carelink` 构建本服务；也可将 Railway Root Directory 设为 `/services/carelink`，继续使用目录内的同名部署配置。环境变量配置如下：
 
 ```text
 POLICY_API_KEY=<长随机密钥>
