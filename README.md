@@ -31,6 +31,8 @@ npm run build
 
 ## 文档
 
+首页照片位于 `public/images/life/`，顺序与裁切配置在 `src/data/lifePhotos.ts`。替换方法和素材来源见 [照片说明](./public/images/life/README.md)。
+
 - [文档与 AI 导航](./docs/README.md)
 - [产品能力](./docs/product-capabilities.md)
 - [系统架构](./docs/architecture.md)

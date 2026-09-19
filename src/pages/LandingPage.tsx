@@ -1,29 +1,31 @@
+import { useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ROLE_HOME } from '../data/mockData'
 import type { Role } from '../domain/models'
 import { useDemoStore } from '../store/demoStore'
-import {
-  ArrowIcon,
-  ClipboardIcon,
-  ShieldHeartIcon,
-  SparkIcon,
-  UsersIcon,
-} from '../components/ui/Icons'
+import { ArrowIcon, ShieldHeartIcon } from '../components/ui/Icons'
+import { LifePhotoWall } from '../components/landing/LifePhotoWall'
 
 const roleEntries: Array<{
   role: Role
   title: string
   subtitle: string
-  icon: typeof UsersIcon
 }> = [
-  { role: 'ELDER', title: '老人视角', subtitle: '说出需要，安心等待', icon: SparkIcon },
-  { role: 'FAMILY', title: '家属视角', subtitle: '随时知道，放心照护', icon: UsersIcon },
-  { role: 'STAFF', title: '服务人员视角', subtitle: '清楚接单，持续推进', icon: ClipboardIcon },
+  { role: 'ELDER', title: '老人', subtitle: '有需要，直接说。' },
+  { role: 'FAMILY', title: '家属', subtitle: '不必反复追问，也知道事情正在被处理。' },
+  { role: 'STAFF', title: '工作人员', subtitle: '少一点琐碎，多一点真正面对人的时间。' },
 ]
 
 export function LandingPage() {
   const navigate = useNavigate()
   const setActiveRole = useDemoStore((state) => state.setActiveRole)
+  const roleEntryRef = useRef<HTMLElement>(null)
+  const mainRef = useRef<HTMLElement>(null)
+
+  const explore = () => {
+    roleEntryRef.current?.scrollIntoView({ block: 'start' })
+    roleEntryRef.current?.focus({ preventScroll: true })
+  }
 
   const enterAs = (role: Role) => {
     setActiveRole(role)
@@ -32,53 +34,50 @@ export function LandingPage() {
 
   return (
     <div className="landing-page">
-      <a className="skip-link" href="#main-content">跳到主要内容</a>
+      <a className="skip-link" href="#main-content" onClick={(event) => {
+        event.preventDefault()
+        mainRef.current?.focus()
+      }}>跳到主要内容</a>
       <header className="landing-nav">
         <div className="brand">
           <span className="brand__mark"><ShieldHeartIcon /></span>
           <span>安序智护</span>
         </div>
-        <span className="mock-pill">产品概念 Demo</span>
       </header>
 
-      <main className="landing-main" id="main-content">
-        <section className="hero">
+      <main className="landing-main" id="main-content" ref={mainRef} tabIndex={-1}>
+        <section className="hero" aria-labelledby="landing-title">
           <div className="hero__copy">
-            <p className="hero__kicker"><SparkIcon /> 把每一份需要，接住并办下去</p>
-            <h1>能听懂需求，也能把事情<span>办下去</span>的养老服务数字员工</h1>
+            <p className="hero__kicker">安序智护<span>AI 养老个案管理员</span></p>
+            <h1 id="landing-title">需要帮助的时候，不应该被忘记。</h1>
             <p className="hero__description">
-              从老人一句自然语言开始，理解需求、协调服务、同步家属，并持续跟进到事情解决。
+              从一句自然的表达开始，安序智护会记住这件事，并一直跟下去。
             </p>
-            <div className="hero__trust" aria-label="产品能力摘要">
-              <span>真实 Agent 对话</span>
-              <span>三角色进度同步</span>
-              <span>安全事件人工确认</span>
+            <p className="hero__value">让技术负责记住，让人负责关心。</p>
+            <div className="hero__actions">
+              <button className="primary-button" type="button" onClick={() => enterAs('ELDER')}>
+                开始体验
+              </button>
+              <button className="hero__explore" type="button" onClick={explore}>
+                自由探索 <span aria-hidden="true">↓</span>
+              </button>
             </div>
-            <button className="primary-button" type="button" onClick={() => enterAs('ELDER')}>
-              开始完整体验 <ArrowIcon />
-            </button>
-          </div>
-
-          <div className="hero-journey" aria-label="安序智护服务流程">
-            <div className="journey-orbit journey-orbit--one" />
-            <div className="journey-orbit journey-orbit--two" />
-            <div className="journey-core"><ShieldHeartIcon /></div>
-            <div className="journey-step journey-step--one"><span>01</span>听懂需求</div>
-            <div className="journey-step journey-step--two"><span>02</span>协调服务</div>
-            <div className="journey-step journey-step--three"><span>03</span>同步进度</div>
-            <div className="journey-step journey-step--four"><span>04</span>持续跟进</div>
           </div>
         </section>
 
-        <section className="role-entry-section" aria-labelledby="role-entry-title">
+        <LifePhotoWall />
+
+        <section className="landing-reflection" aria-labelledby="care-time-title">
+          <h2 id="care-time-title">AI 不替代照护者，它让人的时间重新回到人身上。</h2>
+        </section>
+
+        <section className="role-entry-section" aria-labelledby="role-entry-title" ref={roleEntryRef} tabIndex={-1}>
           <div className="section-heading">
-            <p className="eyebrow">从不同视角，看见同一件事</p>
-            <h2 id="role-entry-title">选择体验身份</h2>
+            <h2 id="role-entry-title">从不同的人眼里，看同一份关心。</h2>
           </div>
           <div className="role-entry-grid">
-            {roleEntries.map(({ role, title, subtitle, icon: Icon }) => (
+            {roleEntries.map(({ role, title, subtitle }) => (
               <button key={role} className="role-entry-card" type="button" onClick={() => enterAs(role)}>
-                <span className="role-entry-card__icon"><Icon /></span>
                 <span><strong>{title}</strong><small>{subtitle}</small></span>
                 <ArrowIcon className="role-entry-card__arrow" />
               </button>
@@ -87,7 +86,7 @@ export function LandingPage() {
         </section>
       </main>
 
-      <footer className="landing-footer">产品概念演示 · 对话由 OpenHex Agent 提供 · Case 与服务信息为 Mock Data</footer>
+      <footer className="landing-footer"><span>安序智护</span><span>产品概念演示 · 服务流程与人物信息为模拟数据</span></footer>
     </div>
   )
 }

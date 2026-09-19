@@ -115,9 +115,11 @@ describe('Phase 1 and Phase 2 routes and interactions', () => {
   it('enters the elder home and switches between all three role homes', async () => {
     render(<App />)
 
-    fireEvent.click(screen.getByRole('button', { name: /开始完整体验/ }))
+    fireEvent.click(screen.getByRole('button', { name: '开始体验' }))
     expect(await screen.findByRole('heading', { name: /今天有什么需要/ })).toBeInTheDocument()
     expect(useDemoStore.getState().activeRole).toBe('ELDER')
+    expect(openhexMock.send).not.toHaveBeenCalled()
+    expect(useDemoStore.getState().cases).toEqual({})
 
     fireEvent.change(screen.getByLabelText('切换体验身份'), {
       target: { value: 'FAMILY' },
@@ -153,7 +155,7 @@ describe('Phase 1 and Phase 2 routes and interactions', () => {
     fireEvent.click(screen.getByRole('button', { name: '确认重置' }))
 
     await waitFor(() => expect(window.location.hash).toBe('#/'))
-    expect(screen.getByRole('heading', { name: /能听懂需求/ })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /需要帮助的时候/ })).toBeInTheDocument()
     expect(useDemoStore.getState().activeRole).toBe('ELDER')
     expect(useDemoStore.getState().cases).toEqual({})
   })
@@ -164,7 +166,7 @@ describe('Phase 1 and Phase 2 routes and interactions', () => {
 
     expect(await screen.findByText('页面没有找到')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('link', { name: '返回开场页' }))
-    expect(await screen.findByRole('heading', { name: /能听懂需求/ })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: /需要帮助的时候/ })).toBeInTheDocument()
   })
 
   it('sends keyboard input to OpenHex without mutating the Mock Case store', async () => {
