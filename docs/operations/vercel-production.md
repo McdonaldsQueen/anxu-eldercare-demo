@@ -196,4 +196,3 @@ npx vercel@59.17.0 project inspect anxu-eldercare-demo \
 5. 重新验证首页和 `POST /api/openhex/chat-token`。
 
 回滚 Vercel Deployment 不会自动回滚 GitHub `main`。如代码本身需要回退，应另外创建明确的 Git revert 提交，避免强制改写主线历史。
-

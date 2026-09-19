@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { getOpenhexToken, resetOpenhexTokenCache } from './openhexToken'
+import { getOpenhexToken, resetOpenhexTokenCache, TOKEN_REQUEST_TIMEOUT_MS } from './openhexToken'
 
 const tokenResponse = (token: string, expiresAt: string) =>
   new Response(JSON.stringify({ token, expiresAt }), {
@@ -58,5 +58,23 @@ describe('OpenHex token client', () => {
     await expect(getOpenhexToken(request, now)).rejects.toThrow('暂时无法连接安序智护')
     await expect(getOpenhexToken(request, now)).resolves.toBe('recovered-token')
     expect(request).toHaveBeenCalledTimes(2)
+  })
+
+  it('aborts a token request after 15 seconds and allows a later retry', async () => {
+    vi.useFakeTimers()
+    const request = vi.fn()
+      .mockImplementationOnce((_input, init: RequestInit) => new Promise<Response>((_resolve, reject) => {
+        init.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
+      }))
+      .mockResolvedValueOnce(tokenResponse('recovered-token', '2030-01-01T00:30:00.000Z'))
+    const now = () => Date.parse('2030-01-01T00:00:00.000Z')
+
+    const first = getOpenhexToken(request, now)
+    const firstExpectation = expect(first).rejects.toThrow('连接安序智护超时')
+    await vi.advanceTimersByTimeAsync(TOKEN_REQUEST_TIMEOUT_MS)
+    await firstExpectation
+    await expect(getOpenhexToken(request, now)).resolves.toBe('recovered-token')
+    expect(request).toHaveBeenCalledTimes(2)
+    vi.useRealTimers()
   })
 })
