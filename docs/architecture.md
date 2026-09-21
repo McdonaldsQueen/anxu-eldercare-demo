@@ -4,7 +4,7 @@
 
 ```mermaid
 flowchart LR
-  Browser[React / HashRouter] --> Pages[三角色页面]
+  Browser[React / BrowserRouter] --> Pages[三角色页面]
   Pages --> AgentUI[OpenHex 对话]
   Pages --> MockUI[Mock Case 交互]
   AgentUI --> Token[/POST /api/openhex/chat-token/]
@@ -24,6 +24,13 @@ flowchart LR
   AgentUI --> Diagnostics[(sessionStorage 脱敏诊断)]
 ```
 
+## 部署与路由
+
+- Vercel 托管 Vite 静态产物和 `api/` 下的 Serverless Functions；`vercel.json` 将 `/elder`、`/family`、`/staff` 及其子路径重写到 `index.html`，由 `BrowserRouter` 继续解析。
+- 本地真实联调使用 `vercel dev`，因为单独运行 Vite 不会提供令牌和 Carelink 接口；`file://` 无法运行当前路由与服务端能力。
+- Railway 从 GitHub `main` 自动部署 Carelink。仓库根目录 `railway.toml` 指向 `Dockerfile.carelink`，只复制 `services/carelink/`；`/data` Volume 保存 SQLite。
+- 浏览器直接连接 OpenHex SSE，Vercel 不代理长连接；后台政策触发由 Vercel Function 使用服务端凭据连接同一会话。
+
 ## 前端层次
 
 - `app/`：路由和角色同步。
@@ -33,11 +40,11 @@ flowchart LR
 - `components/layout/`：应用框架、角色切换和演示工具栏。
 - `domain/`：无 UI 的数据类型、状态迁移和本地决策规则。
 - `store/`：持久化 Mock 业务状态和非持久化 UI 状态。
-- `services/`：外部边界，包括令牌、语音和诊断。
+- `services/`：外部边界，包括令牌、语音、诊断、历史对账、Carelink 浏览器 API 和 OpenHex 工单镜像。
 - `services/carelink/`：独立 Python 服务，负责官方政策抓取核验、订阅、批次租约和去重。
 - `api/carelink/`、`api/cron/`：Vercel 同源入口与定时编排，负责安全访问 Railway 和 OpenHex。
 
-## 两条数据流
+## 主要数据流
 
 ### OpenHex
 
@@ -68,7 +75,21 @@ sequenceDiagram
 
 ### OpenHex 外部工单镜像
 
-`openhexCaseBridge` 从已完成的 Agent 回复中识别明确的建单回执和工单号，并尽可能读取会话历史中的建单工具参数；`demoStore.importOpenhexCase` 按外部工单号幂等地创建或补全 `OPENHEX` 来源的服务 Case。三角色页面仍从同一浏览器的 `demoStore` 读取。此流程不直接运行本地意图引擎，也不调用飞书；不同设备之间尚无共享 Case 后端。
+`openhexCaseBridge` 只处理已完成的 Agent 回复：文本必须明确表示建单成功，并包含符合 `CASE-YYYYMMDD-NNN` 的工单号。若历史中存在建单工具参数，会优先用于补全服务类型、医院、时间和摘要；信息不足时创建待人工评估 Case。
+
+`demoStore.importOpenhexCase` 以外部工单号作为幂等键：首次创建 `caseSource: 'OPENHEX'` 的本地 Case，后续只补全同一 Case，不覆盖非 OpenHex Case。三角色页面仍从同一浏览器的 `demoStore` 读取。此流程不运行本地意图引擎、不调用飞书、不回写 OpenHex，也不提供跨设备同步。
+
+## 服务端接口边界
+
+| 接口 | 调用方 | 职责 |
+| --- | --- | --- |
+| `POST /api/openhex/chat-token` | 浏览器 | 使用稳定访客引用签发 30 分钟令牌 |
+| `POST /api/openhex/demo-reset` | 浏览器 | 清理当前演示访客、解除政策订阅并使 Cookie 过期 |
+| `GET /api/carelink/status` | 浏览器 | 返回脱敏的政策订阅状态 |
+| `POST/DELETE /api/carelink/subscribe` | 浏览器 | 绑定或解除当前 OpenHex 会话 |
+| `POST /api/carelink/manual-push` | 浏览器 | 触发带冷却限制的政策刷新与推送 |
+| `GET /api/cron/carelink-crawl` | Vercel Cron | 更新并核验政策缓存 |
+| `GET /api/cron/carelink-push` | Vercel Cron | 领取批次并触发绑定会话中的 Agent |
 
 ## 状态与所有权
 

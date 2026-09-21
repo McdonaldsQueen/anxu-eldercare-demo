@@ -37,6 +37,19 @@ Vercel Cron 使用 UTC：`0 0 * * *` 对应北京时间 08:00–08:59 抓取，`
 - 只有 OpenHex `chat.send` 返回接受结果后才 `complete`。任一步失败调用 `fail`，不写入 `sent`，后续任务可重试。
 - 手动检查有 60 秒冷却；全局重置解除订阅并清除该演示用户的 proposals、sent 和批次，不删除政策与抓取日志。
 
+## 订阅与批次生命周期
+
+| 操作 | 状态变化 | 失败处理 |
+| --- | --- | --- |
+| `subscribe` | 以 `E001` 保存稳定访客引用和当前 `conversationId`；重新绑定替换旧会话 | 不暴露完整访客引用，只返回启用状态、地区、时间和会话尾号 |
+| `claim` | 筛选王阿姨适用且未发送的政策，创建或领取带 10 分钟租约的批次 | SQLite `BEGIN IMMEDIATE` 保证并发 Cron 与手动任务不会同时领取 |
+| OpenHex 对账 | 按批次标记查询已绑定会话历史 | 已存在标记时跳过重发，继续完成确认 |
+| `complete` | OpenHex 接受消息后确认批次，并把 delivery IDs 写入已发送记录 | 只有确认接受后才能调用 |
+| `fail` | 释放或记录失败批次，不写入已发送记录 | 后续任务可以重新领取并再次对账 |
+| `reset-recipient` | 删除演示订阅、proposals、sent 和批次运行记录 | 保留已核验政策和抓取日志 |
+
+浏览器公开类型只承载脱敏状态：`PolicySubscriptionStatus`、`ManualPolicyPushResult` 和 `PolicyPushOutcome`。结果枚举为 `sent | no_new | busy | not_subscribed | cooldown | failed`，不得携带 API Key、完整访客引用或内部消息正文。
+
 ## 密钥与隐私
 
 | 位置 | 变量 |
@@ -49,9 +62,19 @@ Vercel Cron 使用 UTC：`0 0 * * *` 对应北京时间 08:00–08:59 抓取，`
 
 ## Railway 运维
 
-1. GitHub 仓库连接为当前项目，Root Directory 为 `/services/carelink`。
-2. 挂载 `/data` Volume，公开 HTTPS 域名，健康检查 `/health`。
-3. 设置 Railway 变量，并将域名和相同 API Key 配置到 Vercel。
-4. 先验证 `/health`，再人工触发 crawl、绑定会话和 manual-push。
+1. Railway 服务连接当前 GitHub 仓库的 `main`。仓库根目录 `railway.toml` 指向 `Dockerfile.carelink`，Docker 构建只复制 `services/carelink/`；不要再把 Root Directory 配置成唯一部署前提。
+2. 如需从 `services/carelink/` 单独创建服务，可使用目录内的 `railway.toml` 与 `Dockerfile`，两种入口运行同一个 Python 服务。
+3. 挂载 `/data` Volume，公开 HTTPS 域名，健康检查 `/health`，并设置 `POLICY_DB_PATH=/data/policies.sqlite3`。
+4. 设置 Railway 变量，并将公开域名和相同 API Key 配置到 Vercel；GitHub `main` 更新后由 Railway 自动部署。
+5. 先验证 `/health`，再人工触发 crawl、绑定会话和 manual-push。当前生产拓扑使用一个 500 MB `/data` Volume，定时抓取由 Vercel 负责，容器以 `--refresh-hours 0` 避免双重调度。
+
+## 当前生产调度
+
+| 组件 | 当前状态 |
+| --- | --- |
+| Railway Carelink | GitHub `main` 自动部署，`/health` 检查 Python 服务和政策数量 |
+| `/api/cron/carelink-crawl` | Vercel Cron `0 0 * * *`，北京时间 08:00–08:59 |
+| `/api/cron/carelink-push` | Vercel Cron `0 1 * * *`，北京时间 09:00–09:59 |
+| SQLite | `/data/policies.sqlite3`，Volume 跨部署和重启保留 |
 
 上游来源与同步方式见 `services/carelink/UPSTREAM.md`，服务内接口见 `services/carelink/openapi.json`。

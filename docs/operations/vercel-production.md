@@ -1,6 +1,6 @@
 # Vercel Production 部署手册
 
-本文档记录安序智护 Demo 当前的生产发布流程。最后验证时间：2026-09-19。
+本文档记录安序智护 Demo 当前的生产发布流程。最后验证时间：2026-09-21。
 
 ## 当前部署信息
 
@@ -14,11 +14,27 @@
 | 构建命令 | `npm run build` |
 | 前端产物 | `dist` |
 | Serverless Function | `api/openhex/*`、`api/carelink/*`、`api/cron/*` |
-| 政策服务 | Railway `services/carelink` + `/data` Volume |
+| 政策服务 | Railway 根目录 `railway.toml` + `Dockerfile.carelink` + `/data` Volume |
 | 正式域名 | <https://anxu-eldercare-demo.vercel.app> |
 | Node.js | 项目要求 `>=20.12`，Vercel 当前配置为 24.x |
 
 当前采用 **GitHub 主线 + 手动 Vercel CLI Production 部署**。不要假设推送 `main` 后一定会自动上线；只有在后续明确启用 Vercel Git Integration 后，Git 推送才可作为自动发布入口。
+
+Railway Carelink 与 Vercel 不同：Railway 已连接 GitHub `main` 自动部署，仓库根目录配置只构建 `services/carelink/`。不要把 Vercel 的手动发布约束套用到 Railway。
+
+## 2026-09-21 验证快照
+
+| 检查项 | 结果 |
+| --- | --- |
+| GitHub `main` / 本地 HEAD | `1eaadae`，工作区无分叉或未提交文件 |
+| Vercel Production | `READY`，正式域名指向 `1eaadae` |
+| Vercel Functions | OpenHex、Carelink 和两个 Cron Function 均已构建 |
+| Vercel Cron | crawl `0 0 * * *`；push `0 1 * * *` |
+| Railway | Carelink Deployment `SUCCESS`，服务运行中 |
+| Railway 健康检查 | `/health` 返回 `ok`，当次检查含 3 条已核验政策 |
+| 自动化回归 | 前端 118 项、Python 11 项、Production build 全部通过 |
+
+快照用于说明当时已验证状态，不替代每次发布前的重新检查。不得在文档中记录真实密钥、访客引用或完整内部批次内容。
 
 ## 生产环境变量
 
@@ -126,7 +142,7 @@ Aliased: https://anxu-eldercare-demo.vercel.app
 
 访问：
 
-<https://anxu-eldercare-demo.vercel.app/#/elder>
+<https://anxu-eldercare-demo.vercel.app/elder>
 
 确认页面加载的是本次发布版本，且没有 Vercel 构建错误页。
 

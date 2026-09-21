@@ -11,7 +11,8 @@ git diff --check
 
 | 变更 | 必跑测试 |
 | --- | --- |
-| OpenHex UI、超时或重试 | `App.test.tsx`、`openhexToken.test.ts`、`openhexDiagnostics.test.ts` |
+| OpenHex UI、超时、历史对账或重试 | `App.test.tsx`、`openhexToken.test.ts`、`openhexDiagnostics.test.ts`、`openhexHistorySync.test.ts` |
+| OpenHex 外部工单镜像 | `openhexCaseBridge.test.ts`、`demoStore.test.ts`、`App.test.tsx` |
 | 令牌 Function | `chatTokenApi.test.ts` |
 | Case 状态或 store | `demoStore.test.ts`、`phase4.test.ts` |
 | 本地意图解析 | `mockDecisionEngine.test.ts` |
@@ -28,6 +29,13 @@ git diff --check
 - 键盘：跳转链接、角色切换、工具栏、输入、发送和 Case 操作均有可见焦点。
 - 辅助功能：状态变化使用 `aria-live` 或 `role=status/alert`，风险不只靠颜色表达。
 - 动效：系统设置降低动态效果时关闭滚动和脉冲动画。
+
+## 路由与部署拓扑验收
+
+- 使用开发服务器或 Vercel 访问，不用 `file://` 打开构建产物。
+- `/elder`、`/family`、`/staff` 及详情页刷新后仍由 Vercel rewrites 返回应用入口，再交给 `BrowserRouter`。
+- Railway GitHub 部署使用仓库根目录 `railway.toml` 与 `Dockerfile.carelink`；目录内 Docker 配置只用于独立部署入口。
+- `/data` Volume 在重新部署后仍保留政策缓存、订阅与去重记录。
 
 ## OpenHex Preview 验收
 
@@ -53,3 +61,7 @@ git diff --check
 ## Production 发布门槛
 
 Preview 完成上述验收后，按照 [Vercel Production 部署手册](./operations/vercel-production.md)发布。上线后复查正式域名、令牌接口、真实回复、Mock 流程和构建产物密钥扫描。
+
+## 当前基线
+
+2026-09-21 基于 `main` 提交 `1eaadae` 验证：19 个前端测试文件、118 项测试通过；Carelink 11 项 Python 测试通过；TypeScript 与 Vite Production build 通过。

@@ -21,9 +21,28 @@
 
 Vercel Function 不代理 Agent 回复，因此 Agent 长任务不受该 Function 执行时长直接限制。首轮冷启动或子 Agent 委派可能较长；界面依次显示连接、唤醒、复杂任务和生成回复状态。
 
+## 四条会话链路
+
+| 链路 | 触发方式 | 前端处理 |
+| --- | --- | --- |
+| SSE 实时回复 | 用户发送文字或语音草稿 | `useOpenhexChat` 持续更新同一条 Agent 消息 |
+| 当前轮历史对账 | 回复期间 SSE 未归并最终结果 | 每 2 秒读取同一会话历史，确认当前用户消息后存在 `result` 才替换占位 |
+| 后台政策同步 | Carelink Cron 或手动推送 | 隐藏内部批次消息；页面聚焦、恢复可见性、30 秒轮询及手动后的快速轮询同步 Agent 回复 |
+| 外部工单镜像 | 已完成的 Agent 回复明确建单成功 | 解析工单号并读取可用工具参数，幂等写入当前浏览器 Case Store |
+
 浏览器仍以 SSE 为实时主链路。为处理“服务端已经完成并写入历史，但当前 SSE 没有把最终文本归并进 Hook 状态”的边缘情况，老人端在回复期间通过同一访客会话读取 `messages(conversationId)`。只有历史中同时出现本轮用户消息和后续 `result` 事件时，才会把历史视为权威结果并替换 thinking 占位；这不会重发用户消息。发送响应中的 `conversationId` 只保留在内存中用于本轮对账，诊断记录仍只保存尾部摘要。
 
-Agent 回合完成后，老人端识别明确的建单成功回执和 `CASE-YYYYMMDD-NNN` 工单号，再读取会话历史补全可用的工具参数。`openhexCaseBridge` 只把外部工单镜像到当前浏览器的 Case Store；它不根据老人原始需求自行建单，也不操作飞书。若 Agent 提到工单号而 Web 无法确认建单，页面提示人工核对，避免盲目重提。
+## 外部工单镜像
+
+Agent 回合完成后，`openhexCaseBridge` 才尝试识别外部工单。以下条件必须同时满足：
+
+1. Agent 回复明确表达已经创建或提交成功，而不是计划创建、询问信息或报告失败。
+2. 回复包含符合 `CASE-YYYYMMDD-NNN` 的工单号。
+3. 当前消息属于真实 OpenHex 模式，不是内部 Carelink 触发消息或 Phase 4 Mock 对话。
+
+桥接器会尽可能从会话历史中的建单工具参数补全服务类型、医院、预约时间和请求摘要，生成 `ConfirmedOpenhexCase`。`demoStore.importOpenhexCase` 以工单号为幂等键：不存在时创建 `caseSource: 'OPENHEX'` 的本地 Case；已存在且仍待评估时可补全为服务 Case；不会覆盖同号的非 OpenHex Case。
+
+仅出现工单号、信息不完整或无法确认成功时不会盲目建卡，界面提示人工核对。镜像 Case 只存在于当前浏览器的 `anxu-eldercare-demo-state`，不提供跨设备同步，不回写 OpenHex 或飞书；工作人员后续接单、开始和完成仍走本地 store action 与状态机。
 
 官方参考：
 

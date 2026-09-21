@@ -9,12 +9,13 @@
 | [OpenHex 接入](./openhex-integration.md) | 鉴权、流式回复、超时、诊断和恢复如何工作？ |
 | [Carelink 政策提醒](./carelink-integration.md) | 政策核验、订阅、定时推送、幂等和 Railway 如何工作？ |
 | [测试与验收](./testing.md) | 改动后需要跑哪些检查？ |
-| [ADR](./adr/) | 为什么选择当前边界和实现？ |
+| [线上应用成熟度评估](./production-readiness.md) | 从比赛 Demo 进入真实用户受控试点前，需要完成哪些 P0 门槛？ |
+| [ADR 0001](./adr/0001-openhex-mock-boundary.md) / [ADR 0004](./adr/0004-openhex-confirmed-order-mirror.md) | OpenHex 与 Mock 的隔离规则及已确认工单镜像例外 |
 | [Vercel Production](./operations/vercel-production.md) | 如何发布、验收和回滚？ |
 
 ## AI 快速入口
 
 1. 先读根目录 `AGENTS.md` 的不可破坏边界。
-2. 根据任务只读取对应文档和代码模块，避免把真实 Agent 与 Mock Case 混在一起。
+2. 根据任务只读取对应文档和代码模块；真实 Agent 原始消息不得进入 Mock 决策引擎，已确认外部工单只能按 ADR 0004 镜像。
 3. 对外部 OpenHex 行为存在疑问时，以官方文档和当前安装的 SDK 类型为准。
 4. 修改后同步文档，并运行 `npm test`、`npm run build` 和 `git diff --check`。

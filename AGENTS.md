@@ -7,7 +7,9 @@
 1. `docs/product-capabilities.md`：确认功能是真实能力还是 Mock。
 2. `docs/architecture.md`：确认模块边界、状态与数据流。
 3. `docs/openhex-integration.md`：修改真实 Agent 对话前必读。
-4. `docs/testing.md`：选择需要执行的回归测试。
+4. `docs/carelink-integration.md`：修改政策订阅、Cron 或 Railway 前必读。
+5. `docs/adr/0004-openhex-confirmed-order-mirror.md`：修改 OpenHex 工单镜像前必读。
+6. `docs/testing.md`：选择需要执行的回归测试。
 
 ## 模块地图
 
@@ -15,7 +17,7 @@
 - `src/domain/`：Case 类型、风险目录、状态机和本地决策引擎。
 - `src/store/demoStore.ts`：Mock Case 和三角色共享状态，持久化到 `localStorage`。
 - `src/store/demoUiStore.ts`：非持久化演示界面状态。
-- `src/services/`：访客令牌、语音识别和脱敏诊断。
+- `src/services/`：访客令牌、语音识别、脱敏诊断、历史同步、Carelink 浏览器 API 和 `openhexCaseBridge`。
 - `services/carelink/`：Python 政策抓取、核验、SQLite 订阅与幂等推送批次；部署到 Railway。
 - `api/carelink/` 与 `api/cron/`：浏览器同源订阅/手动检查、Vercel Cron 和 OpenHex 后台编排。
 - `api/openhex/chat-token.ts`：签发短时访客令牌；`api/openhex/demo-reset.ts`：使当前浏览器的访客 Cookie 失效。
@@ -31,6 +33,7 @@
 - `OPENHEX_WORKSPACE_KEY` 只能存在于服务端环境，绝不能写入 `VITE_` 变量、浏览器日志、诊断数据或测试快照。
 - Safety Case 的 AI 输出只是建议；最终风险等级与类型必须由工作人员人工确认。
 - Mock Case 状态迁移必须经过 `caseStateMachine.ts` 或已有 store action。
+- OpenHex 工单镜像必须同时满足明确成功回执和有效外部工单号；不得根据老人原始消息自行建卡，不得覆盖非 `OPENHEX` 来源 Case。
 - 不要改变 `/api/openhex/chat-token` 的 `{ token, expiresAt }` 响应结构和稳定访客 Cookie，除非同时完成迁移方案。
 
 ## 持久化键
@@ -56,4 +59,4 @@ git diff --check
 
 ## 文档维护
 
-改变功能边界时更新 `docs/product-capabilities.md`；改变模块或数据流时更新 `docs/architecture.md`；改变 OpenHex 鉴权、超时或错误恢复时更新 `docs/openhex-integration.md`；改变发布流程时更新 `docs/operations/vercel-production.md`。
+改变功能边界时更新 `docs/product-capabilities.md`；改变模块、路由或数据流时更新 `docs/architecture.md`；改变 OpenHex 鉴权、超时、历史对账或工单镜像时更新 `docs/openhex-integration.md` 和对应 ADR；改变 Carelink 状态机或 Railway 拓扑时更新 `docs/carelink-integration.md`；改变发布流程时更新 `docs/operations/vercel-production.md`。
